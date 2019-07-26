@@ -75,6 +75,10 @@
   Lclopaquemeanzse=.true.,
   Lclthinmeanzse=.true., 
   Lclzopaquecalipsose=.true.,
+  ! CALIPSO AEROSOLS diagnostics
+  LcalipsoaerosolsSR = .true.,
+  LcalipsoaerosolsATB = .true.,
+  LcalipsoaerosolsEXT = .true.,
   ! GROUND LIDAR diagnostics  
   LlidarBetaMol532gr=.true.,  
   LcfadLidarsr532gr=.true.,  

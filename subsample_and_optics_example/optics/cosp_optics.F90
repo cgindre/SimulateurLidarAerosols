@@ -28,12 +28,14 @@
 !
 ! History:
 ! 05/01/15  Dustin Swales - Original version
-! 04/04/18  Rodrigo Guzman- Added CALIOP-like Ground LIDar routines (GLID)
-! 10/04/18  Rodrigo Guzman- Added ATLID-like (EarthCare) lidar routines (ATLID)
+! 04/04/18  Rodrigo Guzman - Added CALIOP-like Ground LIDar optics
+! 10/04/18  Rodrigo Guzman - Added ATLID-like (EarthCare) optics
+! 17/07/19  Rodrigo Guzman - Added CALIPSO aerosols lidar optics
 ! 
 ! %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 module cosp_optics
   USE COSP_KINDS, ONLY: wp,dp
+  USE MOD_COSP_CONFIG,      ONLY: R_UNDEF
   USE COSP_MATH_CONSTANTS,  ONLY: pi
   USE COSP_PHYS_CONSTANTS,  ONLY: rholiq,km,rd,grav
   USE MOD_MODIS_SIM,        ONLY: get_g_nir,get_ssa_nir,phaseIsLiquid,phaseIsIce
@@ -488,5 +490,110 @@ contains
     enddo
     
   end subroutine lidar_optics
+
+  ! ######################################################################################
+  ! SUBROUTINE lidar_aerosols_optics
+  ! ######################################################################################
+  subroutine lidar_aerosols_optics(npoints, nlev, llm, lidar_freq, alpha_aer, beta_aer, &
+                                 pres, presf, temp, beta_mol, betatot, tau_mol, tautot, &
+                                 cloud_fraction)
+
+    ! INPUTS
+    INTEGER,intent(in) :: & 
+         npoints,      & ! Number of gridpoints
+         nlev,         & ! Number of levels in the model grid
+         llm,          & ! Number of levels in the lidar clouds output grid (Nlvgrid)
+         lidar_freq      ! Lidar frequency (nm). Use to change between lidar platforms
+   REAL(WP),intent(in),dimension(npoints,nlev) :: &
+         temp,         & ! Temperature of layer k
+         pres,         & ! Pressure at full levels
+         alpha_aer,    & ! aerosols extinction
+         beta_aer        ! aerosols 180-degree backscatter
+    REAL(WP),intent(in),dimension(npoints,nlev+1) :: &
+         presf           ! Pressure at half levels
+
+    ! OUTPUTS
+    REAL(WP),intent(out),dimension(npoints,nlev)      :: &
+         betatot,        & ! Molecular + aerosols backscatter coefficient
+         tautot,         & ! Molecular + aerosols optical thickness integrated from top
+         beta_mol,       & ! Molecular backscatter coefficient
+         tau_mol           ! Molecular optical thickness
+    REAL(WP),intent(out),dimension(npoints,llm)       :: &
+         cloud_fraction    ! Cloud Fraction used for masking aerosols outputs
+
+    ! LOCAL VARIABLES
+    REAL(WP),dimension(npoints,nlev)       :: &
+         rhoair,         & ! Density of air
+         alpha_mol,      & ! Molecular extinction
+         tau_aer           ! Aerosols Optical thickness
+    REAL(WP),dimension(npoints,nlev+1)     :: zheight
+    real(wp)                               :: Cmol, rdiffm
+    INTEGER                                :: i, k, zi, zf, zinc, zoffset
+
+    ! Local data
+    REAL(WP),PARAMETER :: rhoice     = 0.5e+03    ! Density of ice (kg/m3) 
+    REAL(WP),PARAMETER :: Cmol_532nm = 6.2446e-32 ! Wavelength dependent
+
+    if (lidar_freq .eq. 532) then
+       Cmol   = Cmol_532nm
+    endif
+
+    ! COSPv2 convention for spaceborne lidar (default)
+       zi   = 2
+       zf   = nlev
+       zinc = 1
+       zoffset = -1
+
+    ! Density (clear-sky air)
+    rhoair(1:npoints,1:nlev) = pres(1:npoints,1:nlev)/(rd*temp(1:npoints,1:nlev))
+
+    ! Altitude at half pressure levels:
+    zheight(1:npoints,nlev+1) = 0._wp
+    do k=nlev,1,-1
+       zheight(1:npoints,k) = zheight(1:npoints,k+1) &
+            -(presf(1:npoints,k)-presf(1:npoints,k+1))/(rhoair(1:npoints,k)*grav)
+    enddo
+
+    ! ##############################################################################
+    ! *) Molecular alpha, beta and optical thickness
+    ! ##############################################################################
+    
+    beta_mol(1:npoints,1:nlev)  = pres(1:npoints,1:nlev)/km/temp(1:npoints,1:nlev)*Cmol
+    alpha_mol(1:npoints,1:nlev) = 8._wp*pi/3._wp * beta_mol(1:npoints,1:nlev)
+    
+    ! Optical thickness of each layer (molecular)  
+    tau_mol(1:npoints,1:nlev) = alpha_mol(1:npoints,1:nlev)*(zheight(1:npoints,1:nlev)-&
+         zheight(1:npoints,2:nlev+1))
+             
+    ! Optical thickness from TOA to layer k (molecular)
+    DO k = zi,zf,zinc
+       tau_mol(1:npoints,k) = tau_mol(1:npoints,k) + tau_mol(1:npoints,k+zoffset)
+    ENDDO    
+
+    ! ##############################################################################
+    ! *) Aerosols optical thickness from model's alpha_aer
+    ! ##############################################################################
+
+    ! Optical thickness of each layer (aerosols)
+    tau_aer(1:npoints,1:nlev) = alpha_aer(1:npoints,1:nlev)*(zheight(1:npoints,1:nlev)-&
+         zheight(1:npoints,2:nlev+1))
+
+    ! Optical thickness from TOA to layer k (aerosols)
+    DO k = zi,zf,zinc
+       tau_aer(1:npoints,k) = tau_aer(1:npoints,k) + tau_aer(1:npoints,k+zoffset)
+    ENDDO    
+
+     ! Total signal (aerosols + molecular)
+     betatot(:,:) = beta_aer(:,:) + beta_mol(:,:)
+     tautot(:,:)  = tau_aer(:,:)  + tau_mol(:,:)
+
+    ! ##############################################################################
+    ! *) Cloud fraction initialisation, will be used to mask aerosols outputs either
+    !    with LIDAR observations or with the standard cloud fraction from the simulator
+    ! ##############################################################################
+
+     cloud_fraction(:,:) = R_UNDEF
+
+  end subroutine lidar_aerosols_optics
 
 end module cosp_optics

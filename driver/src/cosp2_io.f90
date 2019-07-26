@@ -2,7 +2,8 @@ module mod_cosp_io
   use cosp_kinds, only: wp
   use mod_cosp,   only: cosp_outputs
   use netcdf
-  USE MOD_COSP_CONFIG, ONLY:  Nlvgrid, LIDAR_NCAT, SR_BINS, PARASOL_NREFL, cloudsat_DBZE_BINS, &
+  USE MOD_COSP_CONFIG, ONLY:  Nlvgrid, LIDAR_NCAT, SR_BINS, PARASOL_NREFL, &
+       cloudsat_DBZE_BINS, Nlvgrid_aerosols, vgrid_z_aerosols, &
        numMODISReffIceBins, numMODISReffLiqBins, ntau, tau_binBounds, tau_binCenters, &
        tau_binEdges,npres, pres_binBounds, pres_binCenters, pres_binEdges, nhgt,      &
        hgt_binBounds, hgt_binCenters, hgt_binEdges, reffLIQ_binCenters,vgrid_z,       &
@@ -72,6 +73,8 @@ contains
     status = nf90_def_dim(fileID,"RELIQ_MODIS",numMODISReffLiqBins,dimID(15))
     if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))
     status = nf90_def_dim(fileID,"REICE_MODIS",numMODISReffIceBins,dimID(16))
+    if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))
+    status = nf90_def_dim(fileID,"lev_aerosols",Nlvgrid_aerosols,dimID(17))
     if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))
 
     ! ---------------------------------------------------------------------------------------
@@ -164,7 +167,14 @@ contains
     if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))
     status = nf90_put_att(fileID,varID(85),"units",        "1")
     if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))
-    
+    ! Levels for lidar aerosols diagnostics
+    status = nf90_def_var(fileID,"lev_aerosols",  nf90_float, (/dimID(17)/),varID(140))
+    if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))
+    status = nf90_put_att(fileID,varID(140),"long_name","level indices aerosols")
+    if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))
+    status = nf90_put_att(fileID,varID(140),"units",        "1")
+    if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))
+
     ! Subcolumms
     status = nf90_def_var(fileID,"cosp_scol",  nf90_float, (/dimID(2)/),varID(86))
     if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))
@@ -626,6 +636,38 @@ contains
        if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))
        status = nf90_put_att(fileID,varID(106),"standard_name", "z_opaque_se")
        if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))    
+    endif
+
+    !LIDAR AEROSOLS simulator outputs
+    if (associated(cospOUT%calipsoaerosols_sr)) then 
+       status = nf90_def_var(fileID,"calipsoaerosolsSR",nf90_float, (/dimID(1),dimID(17)/),varID(141)) 
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status)) 
+       status = nf90_put_att(fileID,varID(141),"long_name","CALIPSO AEROSOLS Scattering Ratio profile") 
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status)) 
+       status = nf90_put_att(fileID,varID(141),"units",        "1") 
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))  
+       status = nf90_put_att(fileID,varID(141),"standard_name", "calipso_aerosols_sr_profile") 
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status)) 
+    endif
+    if (associated(cospOUT%calipsoaerosols_atb)) then 
+       status = nf90_def_var(fileID,"calipsoaerosolsATB",nf90_float, (/dimID(1),dimID(17)/),varID(142)) 
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status)) 
+       status = nf90_put_att(fileID,varID(142),"long_name","CALIPSO AEROSOLS ATB profile") 
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status)) 
+       status = nf90_put_att(fileID,varID(142),"units",        "m-1 sr-1")
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))  
+       status = nf90_put_att(fileID,varID(142),"standard_name", "calipso_aerosols_atb_profile") 
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status)) 
+    endif
+    if (associated(cospOUT%calipsoaerosols_ext)) then 
+       status = nf90_def_var(fileID,"calipsoaerosolsEXT",nf90_float, (/dimID(1),dimID(17)/),varID(143)) 
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status)) 
+       status = nf90_put_att(fileID,varID(143),"long_name","CALIPSO AEROSOLS EXTINCTION profile") 
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status)) 
+       status = nf90_put_att(fileID,varID(143),"units",        "m-1")
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))  
+       status = nf90_put_att(fileID,varID(143),"standard_name", "calipso_aerosols_ext_profile") 
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status)) 
     endif
 
     !GROUND LIDAR simulator output
@@ -1378,7 +1420,9 @@ contains
     if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))
     status = nf90_put_var(fileID,varID(83),loc)
     if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))
-    
+    status = nf90_put_var(fileID,varID(140),vgrid_z_aerosols)
+    if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))
+
     ! CALIPSO simulator output
     if (associated(cospOUT%calipso_betaperp_tot)) then
        status = nf90_put_var(fileID,varID(9),cospOUT%calipso_betaperp_tot)
@@ -1513,6 +1557,20 @@ contains
        status = nf90_put_var(fileID,varID(105),cospOUT%calipso_cldtypemeanzse(:,2))
        if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))
        status = nf90_put_var(fileID,varID(106),cospOUT%calipso_cldtypemeanzse(:,3))
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))
+    endif
+
+    ! LIDAR AEROSOLS simulator outputs
+    if (associated(cospOUT%calipsoaerosols_sr)) then
+       status = nf90_put_var(fileID,varID(141),cospOUT%calipsoaerosols_sr)
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))
+    endif
+    if (associated(cospOUT%calipsoaerosols_atb)) then
+       status = nf90_put_var(fileID,varID(142),cospOUT%calipsoaerosols_atb)
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))
+    endif
+    if (associated(cospOUT%calipsoaerosols_ext)) then
+       status = nf90_put_var(fileID,varID(143),cospOUT%calipsoaerosols_ext)
        if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))
     endif
 
@@ -1843,7 +1901,9 @@ contains
                                 mr_lsliq,mr_lsice,mr_ccliq,mr_ccice,fl_lsrain,fl_lssnow, &
                                 fl_lsgrpl,fl_ccrain,fl_ccsnow,Reff,dtau_s,dtau_c,dem_s,  &
                                 dem_c,skt,landmask,mr_ozone,u_wind,v_wind,sunlit,        &
-                                emsfc_lw,mode,Nlon,Nlat,surfelev)
+                                emsfc_lw,mode,Nlon,Nlat,surfelev,                        &
+                                ! Optional stuff below for lidar aerosols simulator
+                                surftype,alpha_aer,beta_aer,beta_dst,beta_smo,beta_ncl)
      
     ! Arguments
     character(len=512),intent(in) :: fname ! File name
@@ -1856,6 +1916,10 @@ contains
     real(wp),dimension(Npnts),intent(out) :: skt,landmask,u_wind,v_wind,sunlit,surfelev
     real(wp),intent(out) :: emsfc_lw
     integer,intent(out) :: mode,Nlon,Nlat
+    ! Optional arguments for lidar aerosols simulator
+    real(wp),dimension(Npnts),target,intent(out),optional :: surftype
+    real(wp),dimension(Npnts,Nl),target,intent(out),optional :: alpha_aer,beta_aer, &
+                                                         beta_dst, beta_smo, beta_ncl
     
     ! Local variables
     integer,parameter :: NMAX_DIM=5
@@ -2200,6 +2264,43 @@ contains
           else
              call map_ll_to_point(Na,Nb,Npoints,x2=x2,y1=sunlit)
           endif
+       ! Optional fields for lidar aerosols simulator
+       case ('surftype')
+          if (Lpoint) then
+             surftype(1:Npoints) = x1(1:Npoints)
+          else
+             call map_ll_to_point(Na,Nb,Npoints,x2=x2,y1=surftype)
+          endif
+       case ('aer_alpha') 
+          if (Lpoint) then 
+             alpha_aer(1:Npoints,:) = x2(1:Npoints,1:Nlevels) 
+          else 
+             call map_ll_to_point(Na,Nb,Npoints,x3=x3,y2=alpha_aer)
+          endif
+       case ('aer_beta') 
+          if (Lpoint) then 
+             beta_aer(1:Npoints,:) = x2(1:Npoints,1:Nlevels) 
+          else 
+             call map_ll_to_point(Na,Nb,Npoints,x3=x3,y2=beta_aer)
+          endif
+       case ('beta_dst') 
+          if (Lpoint) then 
+             beta_dst(1:Npoints,:) = x2(1:Npoints,1:Nlevels) 
+          else 
+             call map_ll_to_point(Na,Nb,Npoints,x3=x3,y2=beta_dst)
+          endif
+       case ('beta_smo') 
+          if (Lpoint) then 
+             beta_smo(1:Npoints,:) = x2(1:Npoints,1:Nlevels) 
+          else 
+             call map_ll_to_point(Na,Nb,Npoints,x3=x3,y2=beta_smo)
+          endif
+       case ('beta_ncl') 
+          if (Lpoint) then 
+             beta_ncl(1:Npoints,:) = x2(1:Npoints,1:Nlevels) 
+          else 
+             call map_ll_to_point(Na,Nb,Npoints,x3=x3,y2=beta_ncl)
+          endif
        end select
        ! Free memory
        if (vrank == 1) deallocate(x1)
@@ -2407,4 +2508,13 @@ contains
     flush(6)
     stop
   END SUBROUTINE COSP_ERROR
+
+  !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  ! Subroutine 
+  !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  SUBROUTINE nc_read_CALIPSO_observations_input_file()!finput_obs, cospIN)
+
+
+  END SUBROUTINE nc_read_CALIPSO_observations_input_file
+
   end module mod_cosp_io

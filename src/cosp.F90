@@ -30,6 +30,7 @@
 ! May 2015- D. Swales - Original version
 ! Mar 2018- R. Guzman - Added OPAQ diagnostics and GLID simulator
 ! Apr 2018- R. Guzman - Added ATLID simulator
+! Jul 2019- R. Guzman - Added CALIPSO AEROSOLS simulator
 !
 ! %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -40,6 +41,9 @@ MODULE MOD_COSP
                                          N_HYDRO,RTTOV_MAX_CHANNELS,numMISRHgtBins,      &
                                          cloudsat_DBZE_BINS,LIDAR_NTEMP,calipso_histBsct,&
                                          use_vgrid,Nlvgrid,vgrid_zu,vgrid_zl,vgrid_z,    &
+                                         use_vgrid_aerosols,Nlvgrid_aerosols,            &
+                                         vgrid_zu_aerosols,vgrid_zl_aerosols,            &
+                                         vgrid_z_aerosols,                               &
                                          numMODISTauBins,numMODISPresBins,               &
                                          numMODISReffIceBins,numMODISReffLiqBins,        &
                                          numISCCPTauBins,numISCCPPresBins,numMISRTauBins,&
@@ -52,6 +56,8 @@ MODULE MOD_COSP
   USE MOD_COSP_MISR_INTERFACE,       ONLY: cosp_misr_init,        misr_IN
   USE MOD_COSP_ISCCP_INTERFACE,      ONLY: cosp_isccp_init,       isccp_IN
   USE MOD_COSP_CALIPSO_INTERFACE,    ONLY: cosp_calipso_init,     calipso_IN
+  USE MOD_COSP_CALIPSO_AEROSOLS_INTERFACE, ONLY: cosp_calipso_aerosols_init, &
+                                                 calipsoaerosols_IN
   USE MOD_COSP_ATLID_INTERFACE,      ONLY: cosp_atlid_init,       atlid_IN 
   USE MOD_COSP_GRLIDAR532_INTERFACE, ONLY: cosp_grLidar532_init, grLidar532_IN
   USE MOD_COSP_PARASOL_INTERFACE,    ONLY: cosp_parasol_init,     parasol_in
@@ -60,6 +66,7 @@ MODULE MOD_COSP
   USE MOD_ICARUS,                    ONLY: icarus_subcolumn,      icarus_column
   USE MOD_MISR_SIMULATOR,            ONLY: misr_subcolumn,        misr_column
   USE MOD_LIDAR_SIMULATOR,           ONLY: lidar_subcolumn,       lidar_column
+  USE MOD_LIDAR_AEROSOLS_SIMULATOR,  ONLY:                        lidar_aerosols_column
   USE MOD_MODIS_SIM,                 ONLY: modis_subcolumn,       modis_column
   USE MOD_PARASOL,                   ONLY: parasol_subcolumn,     parasol_column
   use mod_cosp_rttov,                ONLY: rttov_column
@@ -116,6 +123,16 @@ MODULE MOD_COSP
           cloudLiq,            & ! Cloud liquid water mixing ratio        (kg/kg)
           fl_rain,             & ! Precipitation (rain) flux              (kg/m2/s)
           fl_snow                ! Precipitation (snow) flux              (kg/m2/s)
+     ! Fields used ONLY by LIDAR AEROSOLS
+     integer,allocatable,dimension(:) :: &
+          surftype               ! 0=ocean, 1=ice, 2=desert
+     real(wp),allocatable,dimension(:,:) :: &
+          alpha_aer,           & ! Aerosol extinction                     (m-1)
+          beta_aer,            & ! Aerosol 180-degree backscatter         (m-1 sr-1)
+          beta_dst,            & ! Beta of dust                           (m-1 sr-1)
+          beta_smo,            & ! Beta of smoke                          (m-1 sr-1)
+          beta_ncl               ! Beta of sea salt                       (m-1 sr-1)
+
   end type cosp_column_inputs
 
   ! ######################################################################################
@@ -127,7 +144,10 @@ MODULE MOD_COSP
           Ncolumns,            & ! Number of columns.
           Nlevels,             & ! Number of levels.
           Npart,               & ! Number of cloud meteors for LIDAR simulators.
-          Nrefl                  ! Number of reflectances for PARASOL simulator
+          Nrefl,               & ! Number of reflectances for PARASOL simulator
+          Nlvgrid,             & ! Number of levels of the cloud fraction field, only used
+                                 ! to perform the cloud masking for aerosols diagnostics
+          obs_flag_calipsoaerosols ! Use of CALIPSO observations file (0=no (default), 1=yes)
      real(wp) :: &
           emsfc_lw               ! Surface emissivity @ 11micron
      real(wp),allocatable,dimension(:,:,:) :: &
@@ -159,7 +179,12 @@ MODULE MOD_COSP
           tau_mol_atlid,       & ! Lidar molecular optical depth (atlid @ 355nm)
           tautot_S_liq,        & ! Parasol Liquid water optical thickness, from TOA to SFC
           tautot_S_ice,        & ! Parasol Ice water optical thickness, from TOA to SFC
-          fracPrecipIce          ! Fraction of precipitation which is frozen (1).
+          fracPrecipIce,       & ! Fraction of precipitation which is frozen (1).
+          beta_mol_calipsoaerosols, &    ! Lidar molecular backscatter coefficient
+          betatot_calipsoaerosols,  &    ! Lidar total backscatter coefficient
+          tau_mol_calipsoaerosols,  &    ! Lidar molecular optical depth
+          tautot_calipsoaerosols,   &    ! Lidar total optical depth
+          cloud_fraction_calipsoaerosols ! Lidar cloud fraction for cloud masking
      type(radar_cfg) :: &
           rcfg_cloudsat          ! Radar configuration information (CLOUDSAT)
   end type cosp_optical_inputs
@@ -191,6 +216,12 @@ MODULE MOD_COSP
      real(wp), dimension(:),pointer :: &
           calipso_cldthinemis => null(),   & ! thin cloud emissivity 
           calipso_srbval => null()           ! SR bins in cfad_sr
+
+     ! CALIPSO AEROSOLS outputs
+     real(wp),dimension(:,:),pointer ::    & 
+          calipsoaerosols_sr => null(),    & ! Scattering Ratio (gridbox) for aerosols
+          calipsoaerosols_ext => null(),   & ! Extinction (gridbox) for aerosols
+          calipsoaerosols_atb => null()      ! ATB (gridbox) for aerosols 
 
      ! GROUND LIDAR outputs
      real(wp),dimension(:,:,:),pointer :: &  
@@ -302,6 +333,7 @@ CONTAINS
     type(isccp_IN)    :: isccpIN    ! Input to the ISCCP simulator
     type(misr_IN)     :: misrIN     ! Input to the LIDAR simulator
     type(calipso_IN)  :: calipsoIN  ! Input to the LIDAR simulator
+    type(calipsoaerosols_IN) :: calipsoaerosolsIN  ! Input to the CALIPSO AEROSOLS simulator 
     type(grLidar532_IN) :: grLidar532IN ! Input to the GROUND LIDAR simulator
     type(atlid_IN)    :: atlidIN    ! Input to the ATLID simulator 
     type(parasol_IN)  :: parasolIN  ! Input to the PARASOL simulator
@@ -333,6 +365,7 @@ CONTAINS
          Lisccp_column,        & ! On/Off switch for column ISCCP simulator
          Lmisr_column,         & ! On/Off switch for column MISR simulator
          Lcalipso_column,      & ! On/Off switch for column CALIPSO simulator
+         Lcalipsoaerosols_column, & ! On/Off switch for column CALIPSO AEROSOLS simulator
          LgrLidar532_column,   & ! On/Off switch for column GROUND LIDAR simulator
          Latlid_column,        & ! On/Off switch for column ATLID simulator
          Lparasol_column,      & ! On/Off switch for column PARASOL simulator
@@ -362,7 +395,8 @@ CONTAINS
          modisRetrievedCloudTopPressure,modisRetrievedTau,modisRetrievedSize,   &
          misr_boxtau,misr_boxztop,misr_dist_model_layertops,isccp_boxtau,       &
          isccp_boxttop,isccp_boxptop,calipso_beta_mol,lidar_only_freq_cloud,    &
-         grLidar532_beta_mol,atlid_beta_mol 
+         grLidar532_beta_mol,atlid_beta_mol, calipsoaerosols_beta_mol,          &
+         calipsoaerosols_beta_tot
     REAL(WP), dimension(:,:,:),allocatable :: &
          modisJointHistogram,modisJointHistogramIce,modisJointHistogramLiq,     &
          calipso_beta_tot,calipso_betaperp_tot, cloudsatDBZe,parasolPix_refl,   &
@@ -407,6 +441,7 @@ CONTAINS
     Lisccp_column       = .false.
     Lmisr_column        = .false.
     Lcalipso_column     = .false.
+    Lcalipsoaerosols_column = .false.
     LgrLidar532_column = .false.
     Latlid_column       = .false.
     Lparasol_column     = .false.
@@ -516,6 +551,13 @@ CONTAINS
        Lcalipso_subcolumn = .true.
     endif
 
+    ! CALIPSO AEROSOLS column
+    if (associated(cospOUT%calipsoaerosols_atb)                            .or.          &
+        associated(cospOUT%calipsoaerosols_ext)                            .or.          &
+        associated(cospOUT%calipsoaerosols_sr)) then
+       Lcalipsoaerosols_column  = .true.
+    endif
+
     ! GROUND LIDAR column 
     if (associated(cospOUT%grLidar532_cfad_sr)                            .or.          & 
         associated(cospOUT%grLidar532_lidarcld)                           .or.          & 
@@ -588,6 +630,7 @@ CONTAINS
     call cosp_errorCheck(cospgridIN, cospIN, Lisccp_subcolumn, Lisccp_column,            &
          Lmisr_subcolumn, Lmisr_column, Lmodis_subcolumn, Lmodis_column,                 &
          Lcloudsat_subcolumn, Lcloudsat_column, Lcalipso_subcolumn, Lcalipso_column,     &
+         Lcalipsoaerosols_column,                                                        &
          Latlid_subcolumn, Latlid_column, LgrLidar532_subcolumn, LgrLidar532_column,     &
          Lrttov_subcolumn, Lrttov_column, Lparasol_subcolumn, Lparasol_column,           &
          Lradar_lidar_tcc, Llidar_only_freq_cloud, Lcloudsat_tcc,Lcloudsat_tcc2, cospOUT,&
@@ -730,7 +773,16 @@ CONTAINS
        rttovIN%fl_rain    => cospgridIN%fl_rain
        rttovIN%fl_snow    => cospgridIN%fl_snow
     endif
-
+    if (Lcalipsoaerosols_column) then
+       calipsoaerosolsIN%Npoints         => Npoints 
+       calipsoaerosolsIN%Nlevels         => cospIN%Nlevels
+       calipsoaerosolsIN%Nlvgrid         => cospIN%Nlvgrid
+       calipsoaerosolsIN%beta_mol        => cospIN%beta_mol_calipsoaerosols
+       calipsoaerosolsIN%tau_mol         => cospIN%tau_mol_calipsoaerosols
+       calipsoaerosolsIN%betatot         => cospIN%betatot_calipsoaerosols
+       calipsoaerosolsIN%tautot          => cospIN%tautot_calipsoaerosols
+       calipsoaerosolsIN%cloud_fraction  => cospIN%cloud_fraction_calipsoaerosols
+    endif
     !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     ! 4) Call subcolumn simulators
     !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -887,7 +939,6 @@ CONTAINS
           end do
        endif
     endif
-
     !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     ! 5) Call column simulators
     !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1125,6 +1176,50 @@ CONTAINS
           nullify(cospOUT%calipso_cldthinemis)
        endif
 
+    endif
+
+    ! CALIPSO AEROSOLS column simulator
+    if (Lcalipsoaerosols_column) then  
+       ! Check to see which outputs are requested. If not requested, use a local dummy array 
+       if (.not. associated(cospOUT%calipsoaerosols_sr)) then 
+          allocate(out1D_1(Npoints*Nlvgrid_aerosols)) 
+          cospOUT%calipsoaerosols_sr(ij:ik,1:Nlvgrid_aerosols) => out1D_1 
+       endif
+       if (.not. associated(cospOUT%calipsoaerosols_ext)) then 
+          allocate(out1D_2(Npoints*Nlvgrid_aerosols)) 
+          cospOUT%calipsoaerosols_ext(ij:ik,1:Nlvgrid_aerosols) => out1D_2 
+       endif
+       if (.not. associated(cospOUT%calipsoaerosols_atb)) then 
+          allocate(out1D_3(Npoints*Nlvgrid_aerosols)) 
+          cospOUT%calipsoaerosols_atb(ij:ik,1:Nlvgrid_aerosols) => out1D_3
+       endif
+       ! Call simulator
+       if  (cospIN%obs_flag_calipsoaerosols .eq. 0)  &
+            calipsoaerosolsIN%cloud_fraction = cospOUT%calipso_lidarcld
+       call lidar_aerosols_column(calipsoaerosolsIN%npoints,         &
+            calipsoaerosolsIN%nlevels, Nlvgrid, Nlvgrid_aerosols,    &
+            cospgridIN%alpha_aer, calipsoaerosolsIN%beta_mol, &
+            calipsoaerosolsIN%tau_mol, calipsoaerosolsIN%betatot,    & 
+            calipsoaerosolsIN%tautot,                                &
+            cospgridIN%phalf(:,2:calipsoaerosolsIN%Nlevels),         &
+            cospgridIN%hgt_matrix, cospgridIN%hgt_matrix_half,       &
+            vgrid_z_aerosols(:), calipsoaerosolsIN%cloud_fraction,   &
+            cospOUT%calipsoaerosols_atb(ij:ik,:),                    &
+            cospOUT%calipsoaerosols_ext(ij:ik,:),                    &
+            cospOUT%calipsoaerosols_sr(ij:ik,:)) 
+       ! Free up memory (if necessary) 
+       if (allocated(out1D_1)) then
+          deallocate(out1D_1)
+          nullify(cospOUT%calipsoaerosols_sr)
+       endif 
+       if (allocated(out1D_2)) then
+          deallocate(out1D_2)
+          nullify(cospOUT%calipsoaerosols_ext)
+       endif
+       if (allocated(out1D_3)) then
+          deallocate(out1D_3)
+          nullify(cospOUT%calipsoaerosols_atb)
+       endif
     endif
 
     ! GROUND LIDAR Simulator
@@ -1619,6 +1714,13 @@ CONTAINS
        if (allocated(modisIN%pres))      deallocate(modisIN%pres)
     endif
 
+    if (Lcalipsoaerosols_column) then
+       nullify(calipsoaerosolsIN%Npoints, calipsoaerosolsIN%Nlevels,  &
+               calipsoaerosolsIN%Nlvgrid, calipsoaerosolsIN%beta_mol, &
+               calipsoaerosolsIN%betatot, calipsoaerosolsIN%tau_mol,  &
+               calipsoaerosolsIN%tautot, calipsoaerosolsIN%cloud_fraction)
+    endif
+
     if (allocated(calipso_beta_tot))      deallocate(calipso_beta_tot)
     if (allocated(grLidar532_beta_tot))  deallocate(grLidar532_beta_tot)
     if (allocated(atlid_beta_tot))        deallocate(atlid_beta_tot) 
@@ -1636,13 +1738,16 @@ CONTAINS
   ! ######################################################################################
   ! SUBROUTINE cosp_init
   ! ######################################################################################
-  SUBROUTINE COSP_INIT(Lisccp, Lmodis, Lmisr, Lcloudsat, Lcalipso, LgrLidar532, Latlid, Lparasol, Lrttov,     &
-       cloudsat_radar_freq, cloudsat_k2, cloudsat_use_gas_abs, cloudsat_do_ray,          &
-       isccp_top_height, isccp_top_height_direction, surface_radar, rcfg, lusevgrid,     &
-       luseCSATvgrid, Nvgrid, Nlevels, cloudsat_micro_scheme)
+  SUBROUTINE COSP_INIT(Lisccp, Lmodis, Lmisr, Lcloudsat, Lcalipso, Lcalipsoaerosols, &
+       LgrLidar532, Latlid, Lparasol, Lrttov,                                        &
+       cloudsat_radar_freq, cloudsat_k2, cloudsat_use_gas_abs, cloudsat_do_ray,      &
+       isccp_top_height, isccp_top_height_direction, surface_radar, rcfg, lusevgrid, &
+       lusevgrid_aerosols,                                                           &
+       luseCSATvgrid, Nvgrid, Nvgrid_aerosols, Nlevels, cloudsat_micro_scheme)
 
     ! INPUTS
-    logical,intent(in) :: Lisccp,Lmodis,Lmisr,Lcloudsat,Lcalipso,LgrLidar532,Latlid,Lparasol,Lrttov
+    logical,intent(in) :: Lisccp,Lmodis,Lmisr,Lcloudsat,Lcalipso,Lcalipsoaerosols, &
+                          LgrLidar532,Latlid,Lparasol,Lrttov
     integer,intent(in)  :: &
          cloudsat_use_gas_abs,       & !
          cloudsat_do_ray,            & !
@@ -1650,12 +1755,14 @@ CONTAINS
          isccp_top_height_direction, & !
          Nlevels,                    & !
          Nvgrid,                     & ! Number of levels for new L3 grid
+         Nvgrid_aerosols,            & ! Number of level for aerosols outputs
          surface_radar                 !
     real(wp),intent(in) :: &
          cloudsat_radar_freq,        & !
          cloudsat_k2                   !
     logical,intent(in) :: &
          lusevgrid,                  & ! Switch to use different vertical grid
+         lusevgrid_aerosols,         & ! Switch to use CALIPSO AEROSOLS grid
          luseCSATvgrid                 ! Switch to use CLOUDSAT grid spacing for new
                                        ! vertical grid
     character(len=64),intent(in) :: &
@@ -1667,6 +1774,7 @@ CONTAINS
     ! Local variables
     integer  :: i
     real(wp) :: zstep
+    real(wp) :: zstep_aerosols
 
     ! Initialize MODIS optical-depth bin boundaries for joint-histogram. (defined in cosp_config.F90)
     if (.not. allocated(modis_histTau)) then
@@ -1697,6 +1805,26 @@ CONTAINS
        allocate(vgrid_zl(Nlvgrid),vgrid_zu(Nlvgrid),vgrid_z(Nlvgrid))
     endif
 
+    ! Set up vertical grid used by CALIPSO AEROSOLS outputs
+    use_vgrid_aerosols = lusevgrid_aerosols
+
+    if (use_vgrid_aerosols) then
+      Nlvgrid_aerosols  = Nvgrid_aerosols
+       allocate(vgrid_zl_aerosols(Nlvgrid_aerosols), &
+         vgrid_zu_aerosols(Nlvgrid_aerosols),vgrid_z_aerosols(Nlvgrid_aerosols))
+       ! Aerosols output grid requested, 480m as to be a multiple of this layer thickness
+       zstep_aerosols = 60._wp
+       do i=1,Nvgrid_aerosols
+          vgrid_zl_aerosols(Nlvgrid_aerosols-i+1) = (i-1)*zstep_aerosols
+          vgrid_zu_aerosols(Nlvgrid_aerosols-i+1) = i*zstep_aerosols
+       enddo
+       vgrid_z_aerosols = (vgrid_zl_aerosols+vgrid_zu_aerosols)/2._wp
+    else
+       Nlvgrid_aerosols = Nlevels
+       allocate(vgrid_zl_aerosols(Nlvgrid_aerosols), &
+             vgrid_zu_aerosols(Nlvgrid_aerosols),vgrid_z_aerosols(Nlvgrid_aerosols))
+    endif
+
     ! Initialize simulators
     if (Lisccp) call cosp_isccp_init(isccp_top_height,isccp_top_height_direction)
     if (Lmodis) call cosp_modis_init()
@@ -1706,6 +1834,7 @@ CONTAINS
          cloudsat_use_gas_abs,cloudsat_do_ray,R_UNDEF,N_HYDRO, surface_radar,            &
          rcfg,cloudsat_micro_scheme)
     if (Lcalipso) call cosp_calipso_init()
+    if (Lcalipsoaerosols) call cosp_calipso_aerosols_init()
     if (LgrLidar532) call cosp_grLidar532_init()
     if (Latlid) call cosp_atlid_init()
     if (Lparasol) call cosp_parasol_init()
@@ -1718,6 +1847,7 @@ CONTAINS
   !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   subroutine cosp_cleanUp()
     deallocate(vgrid_zl,vgrid_zu,vgrid_z)
+    deallocate(vgrid_zl_aerosols,vgrid_zu_aerosols,vgrid_z_aerosols)
   end subroutine cosp_cleanUp
 
   !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1725,7 +1855,8 @@ CONTAINS
   !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   subroutine cosp_errorCheck(cospgridIN, cospIN, Lisccp_subcolumn, Lisccp_column,           &
        Lmisr_subcolumn, Lmisr_column, Lmodis_subcolumn, Lmodis_column, Lcloudsat_subcolumn, &
-       Lcloudsat_column, Lcalipso_subcolumn, Lcalipso_column, Latlid_subcolumn,             &
+       Lcloudsat_column, Lcalipso_subcolumn, Lcalipso_column, Lcalipsoaerosols_column, &
+       Latlid_subcolumn,             &
        Latlid_column, LgrLidar532_subcolumn, LgrLidar532_column, Lrttov_subcolumn,        &
        Lrttov_column, Lparasol_subcolumn, Lparasol_column, Lradar_lidar_tcc,                &
        Llidar_only_freq_cloud, Lcloudsat_tcc, Lcloudsat_tcc2, cospOUT, errorMessage, nError)
@@ -1748,6 +1879,7 @@ CONTAINS
          Lcloudsat_column,    & ! CLOUDSAT column simulator on/off switch
          Lcalipso_subcolumn,  & ! CALIPSO subcolumn simulator on/off switch
          Lcalipso_column,     & ! CALIPSO column simulator on/off switch
+         Lcalipsoaerosols_column,& ! CALIPSO AEROSOLS column simulator on/off switch
          Latlid_subcolumn,    & ! EarthCare subcolumn simulator on/off switch
          Latlid_column,       & ! EarthCare column simulator on/off switch
          LgrLidar532_subcolumn, & ! Ground Lidar subcolumn simulator on/off switch
@@ -1981,6 +2113,69 @@ CONTAINS
        endif
     endif
     
+    ! CALIPSO AEROSOLS simulator
+    if (Lcalipsoaerosols_column) then 
+       alloc_status = .true. 
+       if (.not. allocated(cospIN%beta_mol_calipsoaerosols)) then 
+          nError=nError+1 
+          errorMessage(nError) = 'ERROR: COSP input variable (Lidar aerosols simulator): cospIN%beta_mol_calipsoaerosols has not been allocated' 
+          alloc_status = .false. 
+       endif
+       if (.not. allocated(cospIN%betatot_calipsoaerosols)) then
+          nError=nError+1
+          errorMessage(nError) = 'ERROR: COSP input variable (Lidar aerosols simulator): cospIN%betatot_calipsoaerosols has not been allocated'
+          alloc_status = .false.
+       endif
+       if (.not. allocated(cospIN%tau_mol_calipsoaerosols)) then
+          nError=nError+1
+          errorMessage(nError) = 'ERROR: COSP input variable (Lidar aerosols simulator): cospIN%tau_mol_calipsoaerosols has not been allocated'
+          alloc_status = .false.
+       endif
+       if (.not. allocated(cospIN%tautot_calipsoaerosols)) then
+          nError=nError+1
+          errorMessage(nError) = 'ERROR: COSP input variable (Lidar aerosols simulator): cospIN%tautot_calipsoaerosols has not been allocated'
+          alloc_status = .false.
+       endif
+       if (.not. allocated(cospIN%cloud_fraction_calipsoaerosols)) then
+          nError=nError+1
+          errorMessage(nError) = 'ERROR: COSP input variable (Lidar aerosols simulator): cospIN%cloud_fraction_calipsoaerosols has not been allocated'
+          alloc_status = .false.
+       endif
+       if (.not. alloc_status) then
+          Lcalipsoaerosols_column  = .false.
+          if (associated(cospOUT%calipsoaerosols_sr))  cospOUT%calipsoaerosols_sr(:,:)  = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_ext)) cospOUT%calipsoaerosols_ext(:,:)   = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_atb)) cospOUT%calipsoaerosols_atb(:,:)   = R_UNDEF
+       endif
+       ! Lidar aerosols column simulator requires additional inputs
+       alloc_status = .true.
+       if (.not. allocated(cospgridIN%hgt_matrix)) then
+          nError=nError+1
+          errorMessage(nError) = 'ERROR: COSP input variable (Lidar aerosols simulator): cospgridIN%hgt_matrix has not been allocated'
+          alloc_status = .false.
+       endif
+       if (.not. allocated(cospgridIN%hgt_matrix_half)) then
+          nError=nError+1
+          errorMessage(nError) = 'ERROR: COSP input variable (Lidar aerosols simulator): cospgridIN%hgt_matrix_half has not been allocated'
+          alloc_status = .false.
+       endif
+       if (.not. allocated(cospgridIN%phalf)) then
+          nError=nError+1
+          errorMessage(nError) = 'ERROR: COSP input variable (Lidar aerosols simulator): cospgridIN%phalf has not been allocated'
+          alloc_status = .false.
+       endif
+       if (.not. allocated(cospgridIN%alpha_aer)) then
+          nError=nError+1
+          errorMessage(nError) = 'ERROR: COSP input variable (Lidar aerosols simulator): cospgridIN%alpha_aer has not been allocated'
+          alloc_status = .false.
+       endif
+       if (.not. allocated(cospgridIN%beta_aer)) then
+          nError=nError+1
+          errorMessage(nError) = 'ERROR: COSP input variable (Lidar aerosols simulator): cospgridIN%beta_aer has not been allocated'
+          alloc_status = .false.
+       endif
+    endif
+
     ! Calipso Lidar simulator
     if (Lcalipso_subcolumn .or. Lcalipso_column) then
        alloc_status = .true.
@@ -2493,7 +2688,7 @@ CONTAINS
 
     if (any([Lisccp_subcolumn, Lisccp_column, Lmisr_subcolumn, Lmisr_column, Lrttov_column,&
          Lcalipso_column, Lcloudsat_column, Lradar_lidar_tcc,Llidar_only_freq_cloud, &
-         Lcloudsat_tcc, Lcloudsat_tcc2])) then
+         Lcloudsat_tcc, Lcloudsat_tcc2, Lcalipsoaerosols_column])) then
        if (any(cospgridIN%at .lt. 0)) then
           nError=nError+1
           errorMessage(nError) = 'ERROR: COSP input variable: cospgridIN%at contains values out of range (at<0), expected units (K)'
@@ -2503,6 +2698,7 @@ CONTAINS
           Lmisr_column     = .false.
           Lrttov_column    = .false.
           Lcalipso_column  = .false.
+          Lcalipsoaerosols_column  = .false.
           Lcloudsat_column = .false.
           Lradar_lidar_tcc = .false.
           Llidar_only_freq_cloud = .false.
@@ -2539,6 +2735,9 @@ CONTAINS
           if (associated(cospOUT%radar_lidar_tcc))       cospOUT%radar_lidar_tcc(:)           = R_UNDEF
           if (associated(cospOUT%cloudsat_tcc)) cospOUT%cloudsat_tcc(:) = R_UNDEF
           if (associated(cospOUT%cloudsat_tcc2)) cospOUT%cloudsat_tcc2(:) = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_sr))    cospOUT%calipsoaerosols_sr(:,:)        = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_ext))    cospOUT%calipsoaerosols_ext(:,:)        = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_atb))    cospOUT%calipsoaerosols_atb(:,:)        = R_UNDEF
        endif
     endif
     if (any([Lisccp_subcolumn, Lisccp_column, Lrttov_column])) then
@@ -2561,7 +2760,7 @@ CONTAINS
        endif
     endif
     if (any([Lisccp_subcolumn,Lisccp_column,Lmodis_subcolumn,Lmodis_column,Lcalipso_column,Lrttov_column,&
-             LgrLidar532_column,Latlid_column])) then
+             LgrLidar532_column,Latlid_column,Lcalipsoaerosols_column])) then
        if (any(cospgridIN%phalf .lt. 0)) then
           nError=nError+1
           errorMessage(nError) = 'ERROR: COSP input variable: cospgridIN%phalf contains values out of range'
@@ -2570,6 +2769,7 @@ CONTAINS
           Lmodis_subcolumn = .false.
           Lmodis_column    = .false.
           Lcalipso_column  = .false.
+          Lcalipsoaerosols_column  = .false.
           Lrttov_column    = .false.
           Latlid_column    = .false.
           LgrLidar532_column = .false.
@@ -2641,6 +2841,9 @@ CONTAINS
           if (associated(cospOUT%calipso_cldtypemeanz))  cospOUT%calipso_cldtypemeanz(:,:)    = R_UNDEF
           if (associated(cospOUT%calipso_cldtypemeanzse)) cospOUT%calipso_cldtypemeanzse(:,:) = R_UNDEF
           if (associated(cospOUT%calipso_cldthinemis))   cospOUT%calipso_cldthinemis(:)       = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_sr))    cospOUT%calipsoaerosols_sr(:,:)        = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_ext))   cospOUT%calipsoaerosols_ext(:,:)        = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_atb))   cospOUT%calipsoaerosols_atb(:,:)        = R_UNDEF
        endif
     endif
     if (any([Lisccp_subcolumn,Lisccp_column,Lrttov_column])) then
@@ -2663,7 +2866,7 @@ CONTAINS
        endif
     endif
     if (any([Lmisr_subcolumn,Lmisr_column,Lcloudsat_subcolumn,Lcloudsat_column,Lcalipso_column,Lradar_lidar_tcc,&
-         Llidar_only_freq_cloud,LgrLidar532_column,Latlid_column,Lcloudsat_tcc, Lcloudsat_tcc2])) then
+         Llidar_only_freq_cloud,LgrLidar532_column,Latlid_column,Lcloudsat_tcc, Lcloudsat_tcc2,Lcalipsoaerosols_column])) then
        if (any(cospgridIN%hgt_matrix .lt. -300)) then
           nError=nError+1
           errorMessage(nError) = 'ERROR: COSP input variable: cospgridIN%hgt_matrix contains values out of range'
@@ -2672,6 +2875,7 @@ CONTAINS
           Lcloudsat_subcolumn = .false.
           Lcloudsat_column    = .false.
           Lcalipso_column     = .false.
+          Lcalipsoaerosols_column     = .false.
           Lradar_lidar_tcc    = .false.
           Llidar_only_freq_cloud = .false.
           Lcloudsat_tcc       = .false.
@@ -2706,16 +2910,21 @@ CONTAINS
           if (associated(cospOUT%calipso_cldtypemeanz))      cospOUT%calipso_cldtypemeanz(:,:)      = R_UNDEF 
           if (associated(cospOUT%calipso_cldtypemeanzse))    cospOUT%calipso_cldtypemeanzse(:,:)    = R_UNDEF
           if (associated(cospOUT%calipso_cldthinemis))       cospOUT%calipso_cldthinemis(:)         = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_sr))    cospOUT%calipsoaerosols_sr(:,:)        = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_ext))   cospOUT%calipsoaerosols_ext(:,:)        = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_atb))   cospOUT%calipsoaerosols_atb(:,:)        = R_UNDEF
        endif
     endif
     if (any([Lrttov_column,Lcloudsat_column,Lcalipso_column,Lradar_lidar_tcc,Llidar_only_freq_cloud, &
-             LgrLidar532_column, Latlid_column, Lcloudsat_tcc, Lcloudsat_tcc2])) then
+             LgrLidar532_column, Latlid_column, Lcloudsat_tcc, Lcloudsat_tcc2, &
+             Lcalipsoaerosols_column])) then
        if (any(cospgridIN%hgt_matrix_half .lt. -300)) then
           nError=nError+1
           errorMessage(nError) = 'ERROR: COSP input variable: cospgridIN%hgt_matrix_half contains values out of range'
           Lrttov_column    = .false.
           Lcloudsat_column = .false.
           Lcalipso_column  = .false.
+          Lcalipsoaerosols_column  = .false.
           Lradar_lidar_tcc = .false.
           Llidar_only_freq_cloud = .false.
           Lcloudsat_tcc    = .false.
@@ -2746,14 +2955,18 @@ CONTAINS
           if (associated(cospOUT%calipso_cldtypemeanz))   cospOUT%calipso_cldtypemeanz(:,:)    = R_UNDEF 
           if (associated(cospOUT%calipso_cldtypemeanzse)) cospOUT%calipso_cldtypemeanzse(:,:)  = R_UNDEF 
           if (associated(cospOUT%calipso_cldthinemis))    cospOUT%calipso_cldthinemis(:)       = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_sr))    cospOUT%calipsoaerosols_sr(:,:)        = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_ext))   cospOUT%calipsoaerosols_ext(:,:)        = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_atb))   cospOUT%calipsoaerosols_atb(:,:)        = R_UNDEF
        endif
     endif
-    if (any([Lrttov_column,Lcalipso_column,Lparasol_column])) then
+    if (any([Lrttov_column,Lcalipso_column,Lparasol_column,Lcalipsoaerosols_column])) then
        if (any(cospgridIN%land .lt. 0)) then
           nError=nError+1
           errorMessage(nError) = 'ERROR: COSP input variable: cospgridIN%land contains values out of range'
           Lrttov_column    = .false.
           Lcalipso_column  = .false.
+          Lcalipsoaerosols_column  = .false.
           Lparasol_column  = .false.
           if (associated(cospOUT%rttov_tbs))             cospOUT%rttov_tbs(:,:)               = R_UNDEF
           if (associated(cospOUT%calipso_cfad_sr))       cospOUT%calipso_cfad_sr(:,:,:)       = R_UNDEF
@@ -2769,6 +2982,9 @@ CONTAINS
           if (associated(cospOUT%calipso_cldtypemeanzse)) cospOUT%calipso_cldtypemeanzse(:,:) = R_UNDEF
           if (associated(cospOUT%calipso_cldthinemis))   cospOUT%calipso_cldthinemis(:)       = R_UNDEF
           if (associated(cospOUT%parasolGrid_refl))      cospOUT%parasolGrid_refl(:,:)        = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_sr))    cospOUT%calipsoaerosols_sr(:,:)        = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_ext))   cospOUT%calipsoaerosols_ext(:,:)        = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_atb))   cospOUT%calipsoaerosols_atb(:,:)        = R_UNDEF
        endif
     endif
     if (any([Lisccp_subcolumn,Lisccp_column,Lrttov_column])) then
@@ -3140,6 +3356,41 @@ CONTAINS
           if (associated(cospOUT%grLidar532_cldlayer))      cospOUT%grLidar532_cldlayer(:,:)   = R_UNDEF
           if (associated(cospOUT%grLidar532_beta_tot))      cospOUT%grLidar532_beta_tot(:,:,:) = R_UNDEF
           if (associated(cospOUT%grLidar532_beta_mol))      cospOUT%grLidar532_beta_mol(:,:)   = R_UNDEF
+       endif
+    endif
+
+    if (Lcalipsoaerosols_column) then
+       if (any(cospIN%betatot_calipsoaerosols .lt. 0)) then
+          nError=nError+1
+          errorMessage(nError) = 'ERROR: COSP input variable: cospIN%betatot_calipsoaerosols contains values out of range'
+          Lcalipsoaerosols_column  = .false.
+          if (associated(cospOUT%calipsoaerosols_sr))       cospOUT%calipsoaerosols_sr(:,:)    = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_ext))      cospOUT%calipsoaerosols_ext(:,:)    = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_atb))      cospOUT%calipsoaerosols_atb(:,:)    = R_UNDEF
+       endif
+       if (any(cospIN%beta_mol_calipsoaerosols .lt. 0)) then
+          nError=nError+1
+          errorMessage(nError) = 'ERROR: COSP input variable: cospIN%beta_mol_calipsoaerosols contains values out of range'
+          Lcalipsoaerosols_column  = .false.
+          if (associated(cospOUT%calipsoaerosols_sr))       cospOUT%calipsoaerosols_sr(:,:)    = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_ext))      cospOUT%calipsoaerosols_ext(:,:)    = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_atb))      cospOUT%calipsoaerosols_atb(:,:)    = R_UNDEF
+       endif
+       if (any(cospIN%tautot_calipsoaerosols .lt. 0)) then
+          nError=nError+1
+          errorMessage(nError) = 'ERROR: COSP input variable: cospIN%tautot_calipsoaerosols contains values out of range'
+          Lcalipsoaerosols_column  = .false.
+          if (associated(cospOUT%calipsoaerosols_sr))       cospOUT%calipsoaerosols_sr(:,:)    = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_ext))      cospOUT%calipsoaerosols_ext(:,:)    = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_atb))      cospOUT%calipsoaerosols_atb(:,:)    = R_UNDEF
+       endif
+       if (any(cospIN%tau_mol_calipsoaerosols .lt. 0)) then
+          nError=nError+1
+          errorMessage(nError) = 'ERROR: COSP input variable: cospIN%tau_mol_calipsoaerosols contains values out of range'
+          Lcalipsoaerosols_column  = .false.
+          if (associated(cospOUT%calipsoaerosols_sr))       cospOUT%calipsoaerosols_sr(:,:)    = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_ext))      cospOUT%calipsoaerosols_ext(:,:)    = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_atb))      cospOUT%calipsoaerosols_atb(:,:)    = R_UNDEF
        endif
     endif
 
@@ -3564,6 +3815,32 @@ CONTAINS
           Latlid_column    = .false. 
           nError=nError+1 
           errorMessage(nError) = 'ERROR(atlid_simulator): The number of levels in the input fields are inconsistent'
+       endif
+    endif
+
+    ! CALIPSO AEROSOLS
+    if (Lcalipsoaerosols_column) then
+       if (size(cospIN%beta_mol_calipsoaerosols,1)       .ne. cospIN%Npoints .OR. &
+           size(cospIN%betatot_calipsoaerosols,1)        .ne. cospIN%Npoints .OR. &
+           size(cospIN%tau_mol_calipsoaerosols,1)        .ne. cospIN%Npoints .OR. &
+           size(cospIN%tautot_calipsoaerosols,1)         .ne. cospIN%Npoints .OR. &
+           size(cospIN%cloud_fraction_calipsoaerosols,1) .ne. cospIN%Npoints) then
+          Lcalipsoaerosols_column    = .false.
+          nError=nError+1
+          errorMessage(nError) = 'ERROR(calipsoaerosols_simulator): The number of points in the input fields are inconsistent'
+       endif
+       if (size(cospIN%beta_mol_calipsoaerosols,2)       .ne. cospIN%Nlevels .OR. &
+           size(cospIN%betatot_calipsoaerosols,2)        .ne. cospIN%Nlevels .OR. &
+           size(cospIN%tau_mol_calipsoaerosols,2)        .ne. cospIN%Nlevels .OR. &
+           size(cospIN%tautot_calipsoaerosols,2)         .ne. cospIN%Nlevels) then
+          Lcalipsoaerosols_column    = .false.
+          nError=nError+1
+          errorMessage(nError) = 'ERROR(calipsoaerosols_simulator): The number of levels in the input fields are inconsistent'
+       endif
+       if (size(cospIN%cloud_fraction_calipsoaerosols,2) .ne. cospIN%Nlvgrid) then
+          Lcalipsoaerosols_column    = .false.
+          nError=nError+1
+          errorMessage(nError) = 'ERROR(calipsoaerosols_simulator): The number of levels in the input field for the cloud masking is inconsistent (Nlvgrid)'
        endif
     endif
 
