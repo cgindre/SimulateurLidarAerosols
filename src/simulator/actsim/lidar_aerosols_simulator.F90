@@ -125,9 +125,10 @@ contains
          pmol,         & ! Molecular attenuated backscatter lidar signal power(m^-1.sr^-1)
          pnorm           ! Molecular + aerosols backscatter signal power (m^-1.sr^-1)
     real(wp),dimension(npoints,1,nlevels)      :: ph_in, beta_mol_in, pmol_in, &
-                                                  pnorm_in, zlev_in
+                                                  pnorm_in, zlev_in, alpha_in
     real(wp),dimension(npoints,1,llm_aerosols) :: pplayFlip, beta_molFlip, &
-                                                  pmolFlip, pnormFlip, zlevFlip 
+                                                  pmolFlip, pnormFlip, zlevFlip, &
+                                                  alphaFlip 
     real(wp),dimension(npoints,llm_aerosols)   :: pmolm, sr, pnorm_c, cld_aerosols
 
 
@@ -182,6 +183,11 @@ contains
        zlev_in(:,1,:) = zlev(:,nlevels:1:-1)
        call cosp_change_vertical_grid(Npoints,1,Nlevels,zlev(:,nlevels:1:-1),zlev_half(:,nlevels:1:-1),&
             zlev_in,llm_aerosols,vgrid_zl_aerosols(llm_aerosols:1:-1),vgrid_zu_aerosols(llm_aerosols:1:-1),zlevFlip(:,1,llm_aerosols:1:-1))
+
+       alpha_in(:,1,:) = alpha_aer(:,nlevels:1:-1)
+       call cosp_change_vertical_grid(Npoints,1,Nlevels,zlev(:,nlevels:1:-1),zlev_half(:,nlevels:1:-1),&
+            alpha_in,llm_aerosols,vgrid_zl_aerosols(llm_aerosols:1:-1),vgrid_zu_aerosols(llm_aerosols:1:-1),alphaFlip(:,1,llm_aerosols:1:-1))
+
     endif
 
     ! Compute LIDAR scattering ratio
@@ -245,7 +251,7 @@ contains
       DO k=1,llm_aerosols
          if ( cld_aerosols(i,k) .lt. 100. .and. cld_aerosols(i,k) .ge. 0.) then 
 !               aerotype1(i,k)   = aertype(i,k)
-               ext_aero1(i,k)   = alpha_aer(i,k)
+               ext_aero1(i,k)   = alphaFlip(i,1,k)
                pnorm_aero1(i,k) = pnorm_c(i,k)
                sr_aero1(i,k)    = sr(i,k)
 !               dp_aero1(i,k)    = dp_all(i,k)
