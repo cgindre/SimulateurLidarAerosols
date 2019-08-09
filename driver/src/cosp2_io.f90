@@ -3,7 +3,7 @@ module mod_cosp_io
   use mod_cosp,   only: cosp_outputs
   use netcdf
   USE MOD_COSP_CONFIG, ONLY:  Nlvgrid, LIDAR_NCAT, SR_BINS, PARASOL_NREFL, &
-       cloudsat_DBZE_BINS, Nlvgrid_aerosols, vgrid_z_aerosols, &
+       cloudsat_DBZE_BINS, Nlvgrid_aerosols, vgrid_z_aerosols, LIDAR_AEROSOLS_FLAGS,  &
        numMODISReffIceBins, numMODISReffLiqBins, ntau, tau_binBounds, tau_binCenters, &
        tau_binEdges,npres, pres_binBounds, pres_binCenters, pres_binEdges, nhgt,      &
        hgt_binBounds, hgt_binCenters, hgt_binEdges, reffLIQ_binCenters,vgrid_z,       &
@@ -25,7 +25,7 @@ contains
 
     integer :: fileID,status,ij
     integer,dimension(20)  :: dimID
-    integer,dimension(150) :: varID
+    integer,dimension(160) :: varID
     integer,dimension(Npoints) :: loc
     integer,dimension(Ncolumns) :: cosp_scol
     integer,dimension(2) :: bnds
@@ -639,35 +639,119 @@ contains
     endif
 
     !LIDAR AEROSOLS simulator outputs
-    if (associated(cospOUT%calipsoaerosols_sr)) then 
-       status = nf90_def_var(fileID,"calipsoaerosolsSR",nf90_float, (/dimID(1),dimID(17)/),varID(141)) 
+    if (associated(cospOUT%calipsoaerosols_sr)) then
+       ! Flag O
+       status = nf90_def_var(fileID,"calipsoaerosolsSR0",nf90_float, (/dimID(1),dimID(17)/),varID(141)) 
        if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status)) 
-       status = nf90_put_att(fileID,varID(141),"long_name","CALIPSO AEROSOLS Scattering Ratio profile") 
+       status = nf90_put_att(fileID,varID(141),"long_name","CALIPSO AEROSOLS Scattering Ratio profile flag 0") 
        if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status)) 
        status = nf90_put_att(fileID,varID(141),"units",        "1") 
        if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))  
-       status = nf90_put_att(fileID,varID(141),"standard_name", "calipso_aerosols_sr_profile") 
+       status = nf90_put_att(fileID,varID(141),"standard_name", "calipso_aerosols_sr_profile_flag0") 
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))
+       ! Flag 1
+       status = nf90_def_var(fileID,"calipsoaerosolsSR1",nf90_float, (/dimID(1),dimID(17)/),varID(144)) 
        if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status)) 
+       status = nf90_put_att(fileID,varID(144),"long_name","CALIPSO AEROSOLS Scattering Ratio profile flag 1") 
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status)) 
+       status = nf90_put_att(fileID,varID(144),"units",        "1") 
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))  
+       status = nf90_put_att(fileID,varID(144),"standard_name", "calipso_aerosols_sr_profile_flag1") 
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))
+       ! Flag 2
+       status = nf90_def_var(fileID,"calipsoaerosolsSR2",nf90_float, (/dimID(1),dimID(17)/),varID(145)) 
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status)) 
+       status = nf90_put_att(fileID,varID(145),"long_name","CALIPSO AEROSOLS Scattering Ratio profile flag 2") 
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status)) 
+       status = nf90_put_att(fileID,varID(145),"units",        "1") 
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))  
+       status = nf90_put_att(fileID,varID(145),"standard_name", "calipso_aerosols_sr_profile_flag2") 
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))
+       ! Flag 3
+       status = nf90_def_var(fileID,"calipsoaerosolsSR3",nf90_float, (/dimID(1),dimID(17)/),varID(146)) 
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status)) 
+       status = nf90_put_att(fileID,varID(146),"long_name","CALIPSO AEROSOLS Scattering Ratio profile flag 3")
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status)) 
+       status = nf90_put_att(fileID,varID(146),"units",        "1") 
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))  
+       status = nf90_put_att(fileID,varID(146),"standard_name", "calipso_aerosols_sr_profile_flag3") 
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))
     endif
-    if (associated(cospOUT%calipsoaerosols_atb)) then 
-       status = nf90_def_var(fileID,"calipsoaerosolsATB",nf90_float, (/dimID(1),dimID(17)/),varID(142)) 
+    if (associated(cospOUT%calipsoaerosols_atb)) then
+       ! Flag 0
+       status = nf90_def_var(fileID,"calipsoaerosolsATB0",nf90_float, (/dimID(1),dimID(17)/),varID(142)) 
        if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status)) 
-       status = nf90_put_att(fileID,varID(142),"long_name","CALIPSO AEROSOLS ATB profile") 
+       status = nf90_put_att(fileID,varID(142),"long_name","CALIPSO AEROSOLS ATB profile flag 0") 
        if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status)) 
        status = nf90_put_att(fileID,varID(142),"units",        "m-1 sr-1")
        if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))  
-       status = nf90_put_att(fileID,varID(142),"standard_name", "calipso_aerosols_atb_profile") 
+       status = nf90_put_att(fileID,varID(142),"standard_name", "calipso_aerosols_atb_profile_flag0") 
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))
+       ! Flag 1
+       status = nf90_def_var(fileID,"calipsoaerosolsATB1",nf90_float, (/dimID(1),dimID(17)/),varID(147)) 
        if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status)) 
+       status = nf90_put_att(fileID,varID(147),"long_name","CALIPSO AEROSOLS ATB profile flag 1") 
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status)) 
+       status = nf90_put_att(fileID,varID(147),"units",        "m-1 sr-1")
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))  
+       status = nf90_put_att(fileID,varID(147),"standard_name", "calipso_aerosols_atb_profile_flag1") 
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))
+       ! Flag 2
+       status = nf90_def_var(fileID,"calipsoaerosolsATB2",nf90_float, (/dimID(1),dimID(17)/),varID(148)) 
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status)) 
+       status = nf90_put_att(fileID,varID(148),"long_name","CALIPSO AEROSOLS ATB profile flag 2") 
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status)) 
+       status = nf90_put_att(fileID,varID(148),"units",        "m-1 sr-1")
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))  
+       status = nf90_put_att(fileID,varID(148),"standard_name", "calipso_aerosols_atb_profile_flag2") 
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))
+       ! Flag 3
+       status = nf90_def_var(fileID,"calipsoaerosolsATB3",nf90_float, (/dimID(1),dimID(17)/),varID(149)) 
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status)) 
+       status = nf90_put_att(fileID,varID(149),"long_name","CALIPSO AEROSOLS ATB profile flag 3") 
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status)) 
+       status = nf90_put_att(fileID,varID(149),"units",        "m-1 sr-1")
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))  
+       status = nf90_put_att(fileID,varID(149),"standard_name", "calipso_aerosols_atb_profile_flag3") 
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))
     endif
-    if (associated(cospOUT%calipsoaerosols_ext)) then 
-       status = nf90_def_var(fileID,"calipsoaerosolsEXT",nf90_float, (/dimID(1),dimID(17)/),varID(143)) 
+    if (associated(cospOUT%calipsoaerosols_ext)) then
+       ! Flag 0
+       status = nf90_def_var(fileID,"calipsoaerosolsEXT0",nf90_float, (/dimID(1),dimID(17)/),varID(143)) 
        if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status)) 
-       status = nf90_put_att(fileID,varID(143),"long_name","CALIPSO AEROSOLS EXTINCTION profile") 
+       status = nf90_put_att(fileID,varID(143),"long_name","CALIPSO AEROSOLS EXTINCTION profile flag 0") 
        if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status)) 
        status = nf90_put_att(fileID,varID(143),"units",        "m-1")
        if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))  
-       status = nf90_put_att(fileID,varID(143),"standard_name", "calipso_aerosols_ext_profile") 
+       status = nf90_put_att(fileID,varID(143),"standard_name", "calipso_aerosols_ext_profile_flag0") 
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))
+       ! Flag 1
+       status = nf90_def_var(fileID,"calipsoaerosolsEXT1",nf90_float, (/dimID(1),dimID(17)/),varID(150)) 
        if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status)) 
+       status = nf90_put_att(fileID,varID(150),"long_name","CALIPSO AEROSOLS EXTINCTION profile flag 1") 
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status)) 
+       status = nf90_put_att(fileID,varID(150),"units",        "m-1")
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))  
+       status = nf90_put_att(fileID,varID(150),"standard_name", "calipso_aerosols_ext_profile_flag1") 
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))
+       ! Flag 2
+       status = nf90_def_var(fileID,"calipsoaerosolsEXT2",nf90_float, (/dimID(1),dimID(17)/),varID(151)) 
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status)) 
+       status = nf90_put_att(fileID,varID(151),"long_name","CALIPSO AEROSOLS EXTINCTION profile flag 2") 
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status)) 
+       status = nf90_put_att(fileID,varID(151),"units",        "m-1")
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))  
+       status = nf90_put_att(fileID,varID(151),"standard_name", "calipso_aerosols_ext_profile_flag2") 
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))
+       ! Flag 3
+       status = nf90_def_var(fileID,"calipsoaerosolsEXT3",nf90_float, (/dimID(1),dimID(17)/),varID(152)) 
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status)) 
+       status = nf90_put_att(fileID,varID(152),"long_name","CALIPSO AEROSOLS EXTINCTION profile flag 3") 
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status)) 
+       status = nf90_put_att(fileID,varID(152),"units",        "m-1")
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))  
+       status = nf90_put_att(fileID,varID(152),"standard_name", "calipso_aerosols_ext_profile_flag3") 
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))
     endif
 
     !GROUND LIDAR simulator output
@@ -1562,15 +1646,33 @@ contains
 
     ! LIDAR AEROSOLS simulator outputs
     if (associated(cospOUT%calipsoaerosols_sr)) then
-       status = nf90_put_var(fileID,varID(141),cospOUT%calipsoaerosols_sr)
+       status = nf90_put_var(fileID,varID(141),cospOUT%calipsoaerosols_sr(:,:,1))
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))
+       status = nf90_put_var(fileID,varID(144),cospOUT%calipsoaerosols_sr(:,:,2))
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))
+       status = nf90_put_var(fileID,varID(145),cospOUT%calipsoaerosols_sr(:,:,3))
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))
+       status = nf90_put_var(fileID,varID(146),cospOUT%calipsoaerosols_sr(:,:,4))
        if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))
     endif
     if (associated(cospOUT%calipsoaerosols_atb)) then
-       status = nf90_put_var(fileID,varID(142),cospOUT%calipsoaerosols_atb)
+       status = nf90_put_var(fileID,varID(142),cospOUT%calipsoaerosols_atb(:,:,1))
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))
+       status = nf90_put_var(fileID,varID(147),cospOUT%calipsoaerosols_atb(:,:,2))
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))
+       status = nf90_put_var(fileID,varID(148),cospOUT%calipsoaerosols_atb(:,:,3))
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))
+       status = nf90_put_var(fileID,varID(149),cospOUT%calipsoaerosols_atb(:,:,4))
        if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))
     endif
     if (associated(cospOUT%calipsoaerosols_ext)) then
-       status = nf90_put_var(fileID,varID(143),cospOUT%calipsoaerosols_ext)
+       status = nf90_put_var(fileID,varID(143),cospOUT%calipsoaerosols_ext(:,:,1))
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))
+       status = nf90_put_var(fileID,varID(150),cospOUT%calipsoaerosols_ext(:,:,2))
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))
+       status = nf90_put_var(fileID,varID(151),cospOUT%calipsoaerosols_ext(:,:,3))
+       if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))
+       status = nf90_put_var(fileID,varID(152),cospOUT%calipsoaerosols_ext(:,:,4))
        if (status .ne. nf90_NoERR) print*,trim(nf90_strerror(status))
     endif
 

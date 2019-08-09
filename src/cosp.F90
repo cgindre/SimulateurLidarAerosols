@@ -43,7 +43,7 @@ MODULE MOD_COSP
                                          use_vgrid,Nlvgrid,vgrid_zu,vgrid_zl,vgrid_z,    &
                                          use_vgrid_aerosols,Nlvgrid_aerosols,            &
                                          vgrid_zu_aerosols,vgrid_zl_aerosols,            &
-                                         vgrid_z_aerosols,                               &
+                                         vgrid_z_aerosols,LIDAR_AEROSOLS_FLAGS,          &
                                          numMODISTauBins,numMODISPresBins,               &
                                          numMODISReffIceBins,numMODISReffLiqBins,        &
                                          numISCCPTauBins,numISCCPPresBins,numMISRTauBins,&
@@ -218,7 +218,7 @@ MODULE MOD_COSP
           calipso_srbval => null()           ! SR bins in cfad_sr
 
      ! CALIPSO AEROSOLS outputs
-     real(wp),dimension(:,:),pointer ::    & 
+     real(wp),dimension(:,:,:),pointer ::    & 
           calipsoaerosols_sr => null(),    & ! Scattering Ratio (gridbox) for aerosols
           calipsoaerosols_ext => null(),   & ! Extinction (gridbox) for aerosols
           calipsoaerosols_atb => null()      ! ATB (gridbox) for aerosols 
@@ -1182,16 +1182,16 @@ CONTAINS
     if (Lcalipsoaerosols_column) then  
        ! Check to see which outputs are requested. If not requested, use a local dummy array 
        if (.not. associated(cospOUT%calipsoaerosols_sr)) then 
-          allocate(out1D_1(Npoints*Nlvgrid_aerosols)) 
-          cospOUT%calipsoaerosols_sr(ij:ik,1:Nlvgrid_aerosols) => out1D_1 
+          allocate(out1D_1(Npoints*Nlvgrid_aerosols*LIDAR_AEROSOLS_FLAGS)) 
+          cospOUT%calipsoaerosols_sr(ij:ik,1:Nlvgrid_aerosols,1:LIDAR_AEROSOLS_FLAGS) => out1D_1 
        endif
        if (.not. associated(cospOUT%calipsoaerosols_ext)) then 
-          allocate(out1D_2(Npoints*Nlvgrid_aerosols)) 
-          cospOUT%calipsoaerosols_ext(ij:ik,1:Nlvgrid_aerosols) => out1D_2 
+          allocate(out1D_2(Npoints*Nlvgrid_aerosols*LIDAR_AEROSOLS_FLAGS)) 
+          cospOUT%calipsoaerosols_ext(ij:ik,1:Nlvgrid_aerosols,1:LIDAR_AEROSOLS_FLAGS) => out1D_2 
        endif
        if (.not. associated(cospOUT%calipsoaerosols_atb)) then 
-          allocate(out1D_3(Npoints*Nlvgrid_aerosols)) 
-          cospOUT%calipsoaerosols_atb(ij:ik,1:Nlvgrid_aerosols) => out1D_3
+          allocate(out1D_3(Npoints*Nlvgrid_aerosols*LIDAR_AEROSOLS_FLAGS)) 
+          cospOUT%calipsoaerosols_atb(ij:ik,1:Nlvgrid_aerosols,1:LIDAR_AEROSOLS_FLAGS) => out1D_3
        endif
        ! Call simulator
        if  (cospIN%obs_flag_calipsoaerosols .eq. 0)  &
@@ -1204,9 +1204,9 @@ CONTAINS
             cospgridIN%phalf(:,2:calipsoaerosolsIN%Nlevels),         &
             cospgridIN%hgt_matrix, cospgridIN%hgt_matrix_half,       &
             vgrid_z_aerosols(:), calipsoaerosolsIN%cloud_fraction,   &
-            cospOUT%calipsoaerosols_atb(ij:ik,:),                    &
-            cospOUT%calipsoaerosols_ext(ij:ik,:),                    &
-            cospOUT%calipsoaerosols_sr(ij:ik,:)) 
+            cospOUT%calipsoaerosols_atb(ij:ik,:,:),                  &
+            cospOUT%calipsoaerosols_ext(ij:ik,:,:),                  &
+            cospOUT%calipsoaerosols_sr(ij:ik,:,:)) 
        ! Free up memory (if necessary) 
        if (allocated(out1D_1)) then
           deallocate(out1D_1)
@@ -1813,7 +1813,9 @@ CONTAINS
        allocate(vgrid_zl_aerosols(Nlvgrid_aerosols), &
          vgrid_zu_aerosols(Nlvgrid_aerosols),vgrid_z_aerosols(Nlvgrid_aerosols))
        ! Aerosols output grid requested, 480m as to be a multiple of this layer thickness
-       zstep_aerosols = 60._wp
+!       zstep_aerosols = 60._wp ! RG: Po-Lun suggestion to replace this line by the following line:
+        ! Constant vertical spacing with top at 19.2 km
+        zstep_aerosols = 19200._wp/Nlvgrid_aerosols
        do i=1,Nvgrid_aerosols
           vgrid_zl_aerosols(Nlvgrid_aerosols-i+1) = (i-1)*zstep_aerosols
           vgrid_zu_aerosols(Nlvgrid_aerosols-i+1) = i*zstep_aerosols
@@ -2143,9 +2145,9 @@ CONTAINS
        endif
        if (.not. alloc_status) then
           Lcalipsoaerosols_column  = .false.
-          if (associated(cospOUT%calipsoaerosols_sr))  cospOUT%calipsoaerosols_sr(:,:)  = R_UNDEF
-          if (associated(cospOUT%calipsoaerosols_ext)) cospOUT%calipsoaerosols_ext(:,:)   = R_UNDEF
-          if (associated(cospOUT%calipsoaerosols_atb)) cospOUT%calipsoaerosols_atb(:,:)   = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_sr))  cospOUT%calipsoaerosols_sr(:,:,:)  = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_ext)) cospOUT%calipsoaerosols_ext(:,:,:) = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_atb)) cospOUT%calipsoaerosols_atb(:,:,:) = R_UNDEF
        endif
        ! Lidar aerosols column simulator requires additional inputs
        alloc_status = .true.
@@ -2735,9 +2737,9 @@ CONTAINS
           if (associated(cospOUT%radar_lidar_tcc))       cospOUT%radar_lidar_tcc(:)           = R_UNDEF
           if (associated(cospOUT%cloudsat_tcc)) cospOUT%cloudsat_tcc(:) = R_UNDEF
           if (associated(cospOUT%cloudsat_tcc2)) cospOUT%cloudsat_tcc2(:) = R_UNDEF
-          if (associated(cospOUT%calipsoaerosols_sr))    cospOUT%calipsoaerosols_sr(:,:)        = R_UNDEF
-          if (associated(cospOUT%calipsoaerosols_ext))    cospOUT%calipsoaerosols_ext(:,:)        = R_UNDEF
-          if (associated(cospOUT%calipsoaerosols_atb))    cospOUT%calipsoaerosols_atb(:,:)        = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_sr))    cospOUT%calipsoaerosols_sr(:,:,:)    = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_ext))    cospOUT%calipsoaerosols_ext(:,:,:)  = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_atb))    cospOUT%calipsoaerosols_atb(:,:,:)  = R_UNDEF
        endif
     endif
     if (any([Lisccp_subcolumn, Lisccp_column, Lrttov_column])) then
@@ -2841,9 +2843,9 @@ CONTAINS
           if (associated(cospOUT%calipso_cldtypemeanz))  cospOUT%calipso_cldtypemeanz(:,:)    = R_UNDEF
           if (associated(cospOUT%calipso_cldtypemeanzse)) cospOUT%calipso_cldtypemeanzse(:,:) = R_UNDEF
           if (associated(cospOUT%calipso_cldthinemis))   cospOUT%calipso_cldthinemis(:)       = R_UNDEF
-          if (associated(cospOUT%calipsoaerosols_sr))    cospOUT%calipsoaerosols_sr(:,:)        = R_UNDEF
-          if (associated(cospOUT%calipsoaerosols_ext))   cospOUT%calipsoaerosols_ext(:,:)        = R_UNDEF
-          if (associated(cospOUT%calipsoaerosols_atb))   cospOUT%calipsoaerosols_atb(:,:)        = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_sr))    cospOUT%calipsoaerosols_sr(:,:,:)    = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_ext))   cospOUT%calipsoaerosols_ext(:,:,:)   = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_atb))   cospOUT%calipsoaerosols_atb(:,:,:)   = R_UNDEF
        endif
     endif
     if (any([Lisccp_subcolumn,Lisccp_column,Lrttov_column])) then
@@ -2910,9 +2912,9 @@ CONTAINS
           if (associated(cospOUT%calipso_cldtypemeanz))      cospOUT%calipso_cldtypemeanz(:,:)      = R_UNDEF 
           if (associated(cospOUT%calipso_cldtypemeanzse))    cospOUT%calipso_cldtypemeanzse(:,:)    = R_UNDEF
           if (associated(cospOUT%calipso_cldthinemis))       cospOUT%calipso_cldthinemis(:)         = R_UNDEF
-          if (associated(cospOUT%calipsoaerosols_sr))    cospOUT%calipsoaerosols_sr(:,:)        = R_UNDEF
-          if (associated(cospOUT%calipsoaerosols_ext))   cospOUT%calipsoaerosols_ext(:,:)        = R_UNDEF
-          if (associated(cospOUT%calipsoaerosols_atb))   cospOUT%calipsoaerosols_atb(:,:)        = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_sr))        cospOUT%calipsoaerosols_sr(:,:,:)      = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_ext))       cospOUT%calipsoaerosols_ext(:,:,:)     = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_atb))       cospOUT%calipsoaerosols_atb(:,:,:)     = R_UNDEF
        endif
     endif
     if (any([Lrttov_column,Lcloudsat_column,Lcalipso_column,Lradar_lidar_tcc,Llidar_only_freq_cloud, &
@@ -2955,9 +2957,9 @@ CONTAINS
           if (associated(cospOUT%calipso_cldtypemeanz))   cospOUT%calipso_cldtypemeanz(:,:)    = R_UNDEF 
           if (associated(cospOUT%calipso_cldtypemeanzse)) cospOUT%calipso_cldtypemeanzse(:,:)  = R_UNDEF 
           if (associated(cospOUT%calipso_cldthinemis))    cospOUT%calipso_cldthinemis(:)       = R_UNDEF
-          if (associated(cospOUT%calipsoaerosols_sr))    cospOUT%calipsoaerosols_sr(:,:)        = R_UNDEF
-          if (associated(cospOUT%calipsoaerosols_ext))   cospOUT%calipsoaerosols_ext(:,:)        = R_UNDEF
-          if (associated(cospOUT%calipsoaerosols_atb))   cospOUT%calipsoaerosols_atb(:,:)        = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_sr))    cospOUT%calipsoaerosols_sr(:,:,:)     = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_ext))   cospOUT%calipsoaerosols_ext(:,:,:)    = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_atb))   cospOUT%calipsoaerosols_atb(:,:,:)    = R_UNDEF
        endif
     endif
     if (any([Lrttov_column,Lcalipso_column,Lparasol_column,Lcalipsoaerosols_column])) then
@@ -2982,9 +2984,9 @@ CONTAINS
           if (associated(cospOUT%calipso_cldtypemeanzse)) cospOUT%calipso_cldtypemeanzse(:,:) = R_UNDEF
           if (associated(cospOUT%calipso_cldthinemis))   cospOUT%calipso_cldthinemis(:)       = R_UNDEF
           if (associated(cospOUT%parasolGrid_refl))      cospOUT%parasolGrid_refl(:,:)        = R_UNDEF
-          if (associated(cospOUT%calipsoaerosols_sr))    cospOUT%calipsoaerosols_sr(:,:)        = R_UNDEF
-          if (associated(cospOUT%calipsoaerosols_ext))   cospOUT%calipsoaerosols_ext(:,:)        = R_UNDEF
-          if (associated(cospOUT%calipsoaerosols_atb))   cospOUT%calipsoaerosols_atb(:,:)        = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_sr))    cospOUT%calipsoaerosols_sr(:,:,:)    = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_ext))   cospOUT%calipsoaerosols_ext(:,:,:)   = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_atb))   cospOUT%calipsoaerosols_atb(:,:,:)   = R_UNDEF
        endif
     endif
     if (any([Lisccp_subcolumn,Lisccp_column,Lrttov_column])) then
@@ -3364,33 +3366,33 @@ CONTAINS
           nError=nError+1
           errorMessage(nError) = 'ERROR: COSP input variable: cospIN%betatot_calipsoaerosols contains values out of range'
           Lcalipsoaerosols_column  = .false.
-          if (associated(cospOUT%calipsoaerosols_sr))       cospOUT%calipsoaerosols_sr(:,:)    = R_UNDEF
-          if (associated(cospOUT%calipsoaerosols_ext))      cospOUT%calipsoaerosols_ext(:,:)    = R_UNDEF
-          if (associated(cospOUT%calipsoaerosols_atb))      cospOUT%calipsoaerosols_atb(:,:)    = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_sr))       cospOUT%calipsoaerosols_sr(:,:,:)   = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_ext))      cospOUT%calipsoaerosols_ext(:,:,:)  = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_atb))      cospOUT%calipsoaerosols_atb(:,:,:)  = R_UNDEF
        endif
        if (any(cospIN%beta_mol_calipsoaerosols .lt. 0)) then
           nError=nError+1
           errorMessage(nError) = 'ERROR: COSP input variable: cospIN%beta_mol_calipsoaerosols contains values out of range'
           Lcalipsoaerosols_column  = .false.
-          if (associated(cospOUT%calipsoaerosols_sr))       cospOUT%calipsoaerosols_sr(:,:)    = R_UNDEF
-          if (associated(cospOUT%calipsoaerosols_ext))      cospOUT%calipsoaerosols_ext(:,:)    = R_UNDEF
-          if (associated(cospOUT%calipsoaerosols_atb))      cospOUT%calipsoaerosols_atb(:,:)    = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_sr))       cospOUT%calipsoaerosols_sr(:,:,:)   = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_ext))      cospOUT%calipsoaerosols_ext(:,:,:)  = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_atb))      cospOUT%calipsoaerosols_atb(:,:,:)  = R_UNDEF
        endif
        if (any(cospIN%tautot_calipsoaerosols .lt. 0)) then
           nError=nError+1
           errorMessage(nError) = 'ERROR: COSP input variable: cospIN%tautot_calipsoaerosols contains values out of range'
           Lcalipsoaerosols_column  = .false.
-          if (associated(cospOUT%calipsoaerosols_sr))       cospOUT%calipsoaerosols_sr(:,:)    = R_UNDEF
-          if (associated(cospOUT%calipsoaerosols_ext))      cospOUT%calipsoaerosols_ext(:,:)    = R_UNDEF
-          if (associated(cospOUT%calipsoaerosols_atb))      cospOUT%calipsoaerosols_atb(:,:)    = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_sr))       cospOUT%calipsoaerosols_sr(:,:,:)   = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_ext))      cospOUT%calipsoaerosols_ext(:,:,:)  = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_atb))      cospOUT%calipsoaerosols_atb(:,:,:)  = R_UNDEF
        endif
        if (any(cospIN%tau_mol_calipsoaerosols .lt. 0)) then
           nError=nError+1
           errorMessage(nError) = 'ERROR: COSP input variable: cospIN%tau_mol_calipsoaerosols contains values out of range'
           Lcalipsoaerosols_column  = .false.
-          if (associated(cospOUT%calipsoaerosols_sr))       cospOUT%calipsoaerosols_sr(:,:)    = R_UNDEF
-          if (associated(cospOUT%calipsoaerosols_ext))      cospOUT%calipsoaerosols_ext(:,:)    = R_UNDEF
-          if (associated(cospOUT%calipsoaerosols_atb))      cospOUT%calipsoaerosols_atb(:,:)    = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_sr))       cospOUT%calipsoaerosols_sr(:,:,:)   = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_ext))      cospOUT%calipsoaerosols_ext(:,:,:)  = R_UNDEF
+          if (associated(cospOUT%calipsoaerosols_atb))      cospOUT%calipsoaerosols_atb(:,:,:)  = R_UNDEF
        endif
     endif
 

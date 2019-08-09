@@ -60,7 +60,8 @@
   !----------------------------------------------------------------------------------
   lidar_aerosols=.true.,       ! Key to activate/deactivate lidar aerosols simulator
   use_vgrid_aerosols=.true.,    ! Use fixed vertical grid for aerosols outputs
-  nlvgrid_aerosols=320,         ! Number of levels in aerosols outputs : (480/60)*40
+  nlvgrid_aerosols=320,         ! Number of levels for aerosols outputs: 640,320,160,80
+                                ! 320 (default), 19200/320= 60m thick layers
   use_obs_for_aerosols=.false., ! Use CALIPSO observations to perform the cloud masking
   FINPUT_AEROSOLS_OBS='../data/inputs/DOE/CALIPSO_aerosols_dataset.nc',
   !----------------------------------------------------------------------------------

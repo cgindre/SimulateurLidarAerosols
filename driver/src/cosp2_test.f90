@@ -30,7 +30,7 @@
 ! March 2016 - D. Swales - Original version
 ! April 2018 - R. Guzman - Added OPAQ diagnostics and Ground LIDar (GLID) simulator
 ! April 2018 - R. Guzman - Added ATLID simulator
-! July  2019 - R. Guzman - Added CALIPSO AEROSOLS simulator
+! August 2019 - R. Guzman - Added CALIPSO AEROSOLS simulator
 !
 ! %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 program cosp2_test
@@ -49,7 +49,8 @@ program cosp2_test
                                  Nlvgrid_local  => Nlvgrid,                               &
                                  vgrid_z_local  => vgrid_z,cloudsat_preclvl,              &
                                  Nlvgrid_local_aerosols  => Nlvgrid_aerosols,             &
-                                 vgrid_z_local_aerosols  => vgrid_z_aerosols
+                                 vgrid_z_local_aerosols  => vgrid_z_aerosols,             &
+                                 LIDAR_AEROSOLS_FLAGS
   use cosp_phys_constants, only: amw,amd,amO3,amCO2,amCH4,amN2O,amCO
   use mod_cosp_io,         only: nc_read_input_file,write_cosp2_output,                   &
                                  nc_read_CALIPSO_observations_input_file
@@ -206,7 +207,9 @@ program cosp2_test
              Lclzopaquecalipso,Lclcalipsoopaque,Lclcalipsothin,Lclcalipsozopaque,        & 
              Lclcalipsoopacity,Lclopaquetemp,Lclthintemp,Lclzopaquetemp,Lclopaquemeanz,  &
              Lclthinmeanz,Lclthinemis,Lclopaquemeanzse,Lclthinmeanzse,Lclzopaquecalipsose,&
-             LcalipsoaerosolsSR,LcalipsoaerosolsATB,LcalipsoaerosolsEXT,        &
+             LcalipsoaerosolsSR0,LcalipsoaerosolsSR1,LcalipsoaerosolsSR2,LcalipsoaerosolsSR3, &
+             LcalipsoaerosolsATB0,LcalipsoaerosolsATB1,LcalipsoaerosolsATB2,LcalipsoaerosolsATB3, &
+             LcalipsoaerosolsEXT0,LcalipsoaerosolsEXT1,LcalipsoaerosolsEXT2,LcalipsoaerosolsEXT3, &
              LlidarBetaMol532gr,LcfadLidarsr532gr,Latb532gr,LclgrLidar532,LclhgrLidar532,&
              LcllgrLidar532,LclmgrLidar532,LcltgrLidar532,LlidarBetaMol355,              &
              LcfadLidarsr355,Latb355,Lclatlid,Lclhatlid,Lcllatlid,Lclmatlid,Lcltatlid,   &
@@ -230,7 +233,10 @@ program cosp2_test
                        Lclcalipsozopaque,Lclcalipsoopacity,Lclopaquetemp,Lclthintemp,    &
                        Lclzopaquetemp,Lclopaquemeanz,Lclthinmeanz,Lclthinemis,           &
                        Lclopaquemeanzse,Lclthinmeanzse,Lclzopaquecalipsose,              &
-                       LcalipsoaerosolsSR,LcalipsoaerosolsATB,LcalipsoaerosolsEXT,      &
+                       LcalipsoaerosolsSR0,LcalipsoaerosolsSR1,LcalipsoaerosolsSR2,      &
+                       LcalipsoaerosolsSR3,LcalipsoaerosolsATB0,LcalipsoaerosolsATB1,    &
+                       LcalipsoaerosolsATB2,LcalipsoaerosolsATB3,LcalipsoaerosolsEXT0,   &
+                       LcalipsoaerosolsEXT1,LcalipsoaerosolsEXT2,LcalipsoaerosolsEXT3,   &
                        LlidarBetaMol532gr,LcfadLidarsr532gr,Latb532gr,LclgrLidar532,     &
                        LclhgrLidar532,LcllgrLidar532,LclmgrLidar532,LcltgrLidar532,      &
                        LlidarBetaMol355,LcfadLidarsr355,Latb355,Lclatlid,                &
@@ -368,7 +374,10 @@ program cosp2_test
 
   ! At least one of the outputs AND the lidar_aerosols flag have to be .true.
   ! to run the lidar aerosols simulator
-  if ( (LcalipsoaerosolsSR .or. LcalipsoaerosolsATB .or. LcalipsoaerosolsEXT) .and. &
+  if ( (LcalipsoaerosolsSR0 .or. LcalipsoaerosolsSR1 .or. LcalipsoaerosolsSR2 .or.      &
+        LcalipsoaerosolsSR3 .or. LcalipsoaerosolsATB0 .or. LcalipsoaerosolsATB1 .or.    &
+        LcalipsoaerosolsATB2 .or. LcalipsoaerosolsATB3 .or. LcalipsoaerosolsEXT0 .or.   &
+        LcalipsoaerosolsEXT1 .or. LcalipsoaerosolsEXT2 .or. LcalipsoaerosolsEXT3) .and. &
        (lidar_aerosols) ) then
        Lcalipsoaerosols = .true.
     ! If no CALIPSO observations file is read in, then use the standard cloud fraction
@@ -466,7 +475,9 @@ program cosp2_test
        Lclzopaquecalipso, Lclcalipsoopaque, Lclcalipsothin, Lclcalipsozopaque,           & 
        Lclcalipsoopacity, Lclopaquetemp, Lclthintemp, Lclzopaquetemp, Lclopaquemeanz,    & 
        Lclthinmeanz, Lclthinemis, Lclopaquemeanzse, Lclthinmeanzse, Lclzopaquecalipsose, &
-       LcalipsoaerosolsSR, LcalipsoaerosolsATB, LcalipsoaerosolsEXT,                     &
+       LcalipsoaerosolsSR0,LcalipsoaerosolsSR1,LcalipsoaerosolsSR2,LcalipsoaerosolsSR3,  &
+       LcalipsoaerosolsATB0,LcalipsoaerosolsATB1,LcalipsoaerosolsATB2,LcalipsoaerosolsATB3,&
+       LcalipsoaerosolsEXT0,LcalipsoaerosolsEXT1,LcalipsoaerosolsEXT2,LcalipsoaerosolsEXT3,&
        LcfadDbze94, Ldbze94, Lparasolrefl,                                               &
        Ltbrttov, Lptradarflag0,Lptradarflag1,Lptradarflag2,Lptradarflag3,Lptradarflag4,  &
        Lptradarflag5,Lptradarflag6,Lptradarflag7,Lptradarflag8,Lptradarflag9,Lradarpia,  &
@@ -1127,9 +1138,13 @@ contains
                                     Lclcalipsoopacity,Lclopaquetemp,Lclthintemp,         & 
                                     Lclzopaquetemp,Lclopaquemeanz,Lclthinmeanz,          & 
                                     Lclthinemis,Lclopaquemeanzse,Lclthinmeanzse,         &
-                                    Lclzopaquecalipsose,                                 &
-                                    LcalipsoaerosolsSR,LcalipsoaerosolsATB,              &
-                                    LcalipsoaerosolsEXT,                                 &
+                                    Lclzopaquecalipsose,LcalipsoaerosolsSR0,             &
+                                    LcalipsoaerosolsSR1,LcalipsoaerosolsSR2,             &
+                                    LcalipsoaerosolsSR3,LcalipsoaerosolsATB0,            &
+                                    LcalipsoaerosolsATB1,LcalipsoaerosolsATB2,           &
+                                    LcalipsoaerosolsATB3,LcalipsoaerosolsEXT0,           &
+                                    LcalipsoaerosolsEXT1,LcalipsoaerosolsEXT2,           &
+                                    LcalipsoaerosolsEXT3,                                &
                                     LcfadDbze94,Ldbze94,Lparasolrefl,                    &
                                     Ltbrttov, Lptradarflag0,Lptradarflag1,Lptradarflag2, &
                                     Lptradarflag3,Lptradarflag4,Lptradarflag5,           &
@@ -1229,9 +1244,18 @@ contains
          Lclopaquemeanzse,   & ! CALIPSO opaque cloud altitude with respect to SE 
          Lclthinmeanzse,     & ! CALIPSO thin cloud altitude with respect to SE
          Lclzopaquecalipsose,& ! CALIPSO z_opaque altitude with respect to SE
-         LcalipsoaerosolsSR, & ! CALIPSO AEROSOLS SR profiles  (gridbox/column scale)
-         LcalipsoaerosolsATB,& ! CALIPSO AEROSOLS ATB profiles (gridbox/column scale)
-         LcalipsoaerosolsEXT,& ! CALIPSO AEROSOLS EXTINCTION profiles (gridbox/column scale)
+         LcalipsoaerosolsSR0,& ! CALIPSO AEROSOLS SR profiles  (gridbox/column scale)
+         LcalipsoaerosolsSR1,& ! CALIPSO AEROSOLS SR profiles  (gridbox/column scale)
+         LcalipsoaerosolsSR2,& ! CALIPSO AEROSOLS SR profiles  (gridbox/column scale)
+         LcalipsoaerosolsSR3,& ! CALIPSO AEROSOLS SR profiles  (gridbox/column scale)
+         LcalipsoaerosolsATB0,& ! CALIPSO AEROSOLS ATB profiles (gridbox/column scale)
+         LcalipsoaerosolsATB1,& ! CALIPSO AEROSOLS ATB profiles (gridbox/column scale)
+         LcalipsoaerosolsATB2,& ! CALIPSO AEROSOLS ATB profiles (gridbox/column scale)
+         LcalipsoaerosolsATB3,& ! CALIPSO AEROSOLS ATB profiles (gridbox/column scale)
+         LcalipsoaerosolsEXT0,& ! CALIPSO AEROSOLS EXTINCTION profiles (gridbox/column scale)
+         LcalipsoaerosolsEXT1,& ! CALIPSO AEROSOLS EXTINCTION profiles (gridbox/column scale)
+         LcalipsoaerosolsEXT2,& ! CALIPSO AEROSOLS EXTINCTION profiles (gridbox/column scale)
+         LcalipsoaerosolsEXT3,& ! CALIPSO AEROSOLS EXTINCTION profiles (gridbox/column scale)
          LcfadDbze94,      & ! CLOUDSAT radar reflectivity CFAD
          Ldbze94,          & ! CLOUDSAT radar reflectivity
          LparasolRefl,     & ! PARASOL reflectance
@@ -1363,9 +1387,18 @@ contains
     endif
 
     ! LIDAR AEROSOLS simulator
-    if (LcalipsoaerosolsSR)  allocate(x%calipsoaerosols_sr(Npoints,Nlvgrid_aerosols))
-    if (LcalipsoaerosolsATB) allocate(x%calipsoaerosols_atb(Npoints,Nlvgrid_aerosols))
-    if (LcalipsoaerosolsEXT) allocate(x%calipsoaerosols_ext(Npoints,Nlvgrid_aerosols))
+    if (LcalipsoaerosolsSR0 .or. LcalipsoaerosolsSR1 .or. LcalipsoaerosolsSR2 .or.       &
+        LcalipsoaerosolsSR3) then
+       allocate(x%calipsoaerosols_sr(Npoints,Nlvgrid_aerosols,LIDAR_AEROSOLS_FLAGS))
+    endif
+    if (LcalipsoaerosolsATB0 .or. LcalipsoaerosolsATB1 .or. LcalipsoaerosolsATB2 .or.    &
+        LcalipsoaerosolsATB3) then
+       allocate(x%calipsoaerosols_atb(Npoints,Nlvgrid_aerosols,LIDAR_AEROSOLS_FLAGS))
+    endif
+    if (LcalipsoaerosolsEXT0 .or. LcalipsoaerosolsEXT1 .or. LcalipsoaerosolsEXT2 .or.    &
+        LcalipsoaerosolsEXT3) then
+       allocate(x%calipsoaerosols_ext(Npoints,Nlvgrid_aerosols,LIDAR_AEROSOLS_FLAGS))
+    endif
 
     ! GROUND LIDAR @ 532NM simulator
     if (LlidarBetaMol532gr) allocate(x%grLidar532_beta_mol(Npoints,Nlevels))

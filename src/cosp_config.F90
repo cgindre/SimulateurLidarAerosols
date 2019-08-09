@@ -359,7 +359,13 @@ MODULE MOD_COSP_CONFIG
     ! Parameters used by the CALIPSO AEROSOLS simulator
     ! #################################################################################### 
     logical :: &
-         use_vgrid_aerosols                ! True=Use new grid for CALIPSO AEROSOLS outputs
+         use_vgrid_aerosols                ! True=Use new vertical grid for
+                                           ! CALIPSO AEROSOLS outputs
+    integer,parameter  ::     &
+       LIDAR_AEROSOLS_FLAGS = 4            ! Flag 0 = No masking at all
+                                           ! Flag 1 = Cloud mask only
+                                           ! Flag 2 = Detection Threshold mask only
+                                           ! Flag 3 = Cloud + Detection Threshold mask
     real(wp), PARAMETER :: atbmin  = 5.e-7 ! default: 5.e-7 Detection limit for aerosol
     real(wp), PARAMETER :: c0      = 1.0   ! Detection limit coefficient for aerosol
     real(wp), PARAMETER :: det1    = 0.5   ! 640km: 0.015, 320km: 0.031, 160km: 0.0625, 

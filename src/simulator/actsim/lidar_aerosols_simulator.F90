@@ -68,14 +68,14 @@
 ! Reference : Ma et al., 2018
 ! History   : March 2015, Initial code development from COSPv1.4
 !
-! July 2019 : R. Guzman adapted the code for COSPv2
+! August 2019 : R. Guzman adapted the code for COSPv2
 !
 ! %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 module mod_lidar_aerosols_simulator
   USE COSP_KINDS,         ONLY: wp
   USE MOD_COSP_CONFIG,    ONLY: R_UNDEF, atbmin, c0, det1, &
                                 use_vgrid_aerosols, vgrid_zl_aerosols, &
-                                vgrid_zu_aerosols, vgrid_z_aerosols
+                                vgrid_zu_aerosols, vgrid_z_aerosols, LIDAR_AEROSOLS_FLAGS
   USE MOD_COSP_STATS,     ONLY: COSP_CHANGE_VERTICAL_GRID, hist1d
   USE MOD_LIDAR_SIMULATOR,ONLY: cmp_backsignal
   implicit none
@@ -89,7 +89,7 @@ contains
   subroutine lidar_aerosols_column(npoints, nlevels, llm, llm_aerosols, alpha_aer, &
                             beta_mol, tau_mol, betatot, tautot, &
                             pplay, zlev, zlev_half, vgrid_z_aerosols, cloud_fraction, &
-                            pnorm_aero1, ext_aero1, sr_aero1)
+                            pnorm_aero, ext_aero, sr_aero)
 
     ! INPUTS
     INTEGER,intent(in) :: & 
@@ -113,10 +113,11 @@ contains
          cloud_fraction  ! 3D "lidar" cloud fraction
 
     ! OUTPUTS
-    REAL(WP),intent(out),dimension(npoints,llm_aerosols) :: &
-         pnorm_aero1,  & ! Molecular + aerosols backscatter signal power (m^-1.sr^-1)
-         ext_aero1,    & ! extinction (m^-1)
-         sr_aero1        ! Scattering Ratio (no unit)
+    REAL(WP),intent(out),dimension(npoints,llm_aerosols,LIDAR_AEROSOLS_FLAGS) :: &
+         pnorm_aero,  & ! Molecular + aerosols backscatter signal power (m^-1.sr^-1)
+         ext_aero,    & ! extinction (m^-1)
+         sr_aero        ! Scattering Ratio (no unit)
+
 
     ! LOCAL VARIABLES
     INTEGER :: i,j,k,zi,zf,zinc,nb_aero_sublay,k_llm
@@ -143,10 +144,11 @@ contains
 !---- 1. Initialization
 !------------------------------------------------------------
 
-    pnorm_aero1(:,:) = R_UNDEF
+    pnorm_aero(:,:,:) = R_UNDEF
 !    dp_aero1(:,:)    = R_UNDEF
-    ext_aero1(:,:)   = R_UNDEF
-    sr_aero1(:,:)    = R_UNDEF
+    ext_aero(:,:,:)   = R_UNDEF
+    sr_aero(:,:,:)    = R_UNDEF
+    sr(:,:)          = R_UNDEF
 
     ! ####################################################################################
     ! *) Molecular signal
@@ -245,15 +247,29 @@ contains
  enddo
 
 
-! Cloud Masking
+! Filling in the output variables
 
+! Flag 0 : No masking at all
    DO i = 1,npoints
       DO k=1,llm_aerosols
+
+               ext_aero(i,k,1)   = alphaFlip(i,1,k)
+               pnorm_aero(i,k,1) = pnorm_c(i,k)
+!               pnorm_aero(i,k,1) = pmolFlip(i,1,k) !RG: testing interpolation routine
+               sr_aero(i,k,1)    = sr(i,k)
+
+      ENDDO
+   ENDDO
+
+! Flag 1 : Cloud masking only
+   DO i = 1,npoints
+      DO k=1,llm_aerosols
+
          if ( cld_aerosols(i,k) .lt. 100. .and. cld_aerosols(i,k) .ge. 0.) then 
 !               aerotype1(i,k)   = aertype(i,k)
-               ext_aero1(i,k)   = alphaFlip(i,1,k)
-               pnorm_aero1(i,k) = pnorm_c(i,k)
-               sr_aero1(i,k)    = sr(i,k)
+               ext_aero(i,k,2)   = ext_aero(i,k,1)
+               pnorm_aero(i,k,2) = pnorm_aero(i,k,1)
+               sr_aero(i,k,2)    = sr_aero(i,k,1)
 !               dp_aero1(i,k)    = dp_all(i,k)
 !               ext_tmp(i,k)     = alpha_aer(i,k)
 !
@@ -269,12 +285,21 @@ contains
       ENDDO
    ENDDO
 
+! Flag 2 : Detection Threshold masking only
    DO i = 1, npoints
       DO k=1,llm_aerosols
+
+               ext_aero(i,k,3)   = ext_aero(i,k,1)
+               pnorm_aero(i,k,3) = pnorm_aero(i,k,1)
+               sr_aero(i,k,3)    = sr_aero(i,k,1)
+
 !         if (aerotype1(i,k) .lt. 10. ) then
-         if ( sr(i,k)    .lt. pmolm(i,k)  .or.  &
-              pnorm_c(i,k) .lt. atbmin   ) then 
-               ext_aero1(i,k)   = 0.
+         if ( (sr(i,k)    .lt. pmolm(i,k)  .or.  &
+              pnorm_c(i,k) .lt. atbmin)    .and. &
+              (pnorm_aero(i,k,3) .ge. 0.) ) then 
+               ext_aero(i,k,3)   = 0.
+               pnorm_aero(i,k,3) = pmolFlip(i,1,k)
+               sr_aero(i,k,3)    = 1.
 !               aerotype2(i,k)   = 0.
 !               ext_aero2(i,k)   = 0.
 !               pnorm_aero2(i,k) = pmol(i,k)
@@ -285,7 +310,23 @@ contains
       ENDDO
    ENDDO
 
- 
+! Flag 3 : Cloud + Detection Threshold masking
+    DO i = 1,npoints
+      DO k=1,llm_aerosols
+
+         ! Cloud mask applied to Detection Threshold masked fields
+         if ( cld_aerosols(i,k) .lt. 100. .and. cld_aerosols(i,k) .ge. 0.) then 
+               ext_aero(i,k,4)   = ext_aero(i,k,3)
+               pnorm_aero(i,k,4) = pnorm_aero(i,k,3)
+               sr_aero(i,k,4)    = sr_aero(i,k,3)
+         else
+           exit
+         endif
+
+      ENDDO
+   ENDDO
+
+
   end subroutine lidar_aerosols_column
 
   ! ####################################################################################
