@@ -36,13 +36,219 @@
 ! Jan 2013 - G. Cesana        - Added betaperp and temperature arguments 
 !                             - Added phase 3D/3Dtemperature/Map output variables in diag_lidar 
 ! May 2015 - D. Swales        - Modified for cosp2.0 
+! May 2020 - R. Guzman        - Added linear interpolation routines to perform vertical 
+!                               interpolations for the lidar and radar simulators by adding
+!                               new source file src/cosp_interp.F90. Also added subroutines
+!                               called : COSP_INTERP_NEW_GRID, COSP_FIND_GRID_INDEXES and
+!                               COSP_MIXING_REGRID_METHODS
+!
 ! %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 MODULE MOD_COSP_STATS
   USE COSP_KINDS, ONLY: wp
   USE MOD_COSP_CONFIG, ONLY: R_UNDEF,R_GROUND
+  USE MOD_INTERP
 
   IMPLICIT NONE
 CONTAINS
+
+  !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  !---------- SUBROUTINE COSP_MIXING_REGRID_METHODS -------------
+  !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  SUBROUTINE COSP_MIXING_REGRID_METHODS(Npoints,Ncolumns,Nlevels,zfull,zhalf,y,Nglevels,newgrid_mid,newgrid_bot,newgrid_top,r,log_units)
+   implicit none
+   ! Input arguments
+   integer,intent(in) :: Npoints  !# of grid points
+   integer,intent(in) :: Nlevels  !# of levels
+   integer,intent(in) :: Ncolumns !# of columns
+   real(wp),dimension(Npoints,Nlevels),intent(in) :: zfull ! Height at model levels [m] (Middle of model layer)
+   real(wp),dimension(Npoints,Nlevels),intent(in) :: zhalf ! Height at half model levels [m] (Bottom of model layer)
+   real(wp),dimension(Npoints,Ncolumns,Nlevels),intent(in) :: y     ! Variable to be changed to a different grid
+   integer,intent(in) :: Nglevels  !# levels in the new grid
+   real(wp),dimension(Nglevels),intent(in) :: newgrid_mid ! Mid altitude of new levels    [m]
+   real(wp),dimension(Nglevels),intent(in) :: newgrid_bot ! Lower boundary of new levels  [m]
+   real(wp),dimension(Nglevels),intent(in) :: newgrid_top ! Upper boundary of new levels  [m]
+   logical,optional,intent(in) :: log_units ! log units, need to convert to linear units
+   ! Output
+   real(wp),dimension(Npoints,Ncolumns,Nglevels),intent(out) :: r ! Variable on new grid
+
+   ! Local variables
+   real(wp),dimension(Npoints,Ncolumns,Nglevels) :: r_lin ! Variable linearly interpolated
+   real(wp),dimension(Npoints,Ncolumns,Nglevels) :: r_leg ! Variable with former (legacy)
+                                                          ! vertical regridding method
+   integer :: i,j,k
+   logical :: lunits
+   real(wp),dimension(Npoints,1,Nlevels)  :: dz_mod        ! Model grid layer thicknesses
+   real(wp),dimension(Npoints,1,Nglevels) :: dz_mod_out    ! Model grid layer thicknesses
+                                                           ! interpolated to output grid
+   real(wp),dimension(Npoints,1,Nglevels) :: dz_out        ! Output grid layer thicknesses
+   real(wp),dimension(Npoints,Nglevels)   :: method_weight ! Weighting function
+
+   lunits=.false.
+   if (present(log_units)) lunits=log_units
+
+   r = 0._wp
+   r_lin = 0._wp
+   r_leg = 0._wp
+
+! Computing model (dz_mod) and output (dz_out) grid layer thicknesses on their own vertical grid
+  do i=1,Npoints
+    dz_mod(i,1,:) = 2.*(zfull(i,:)-zhalf(i,:))
+    dz_out(i,1,:) = newgrid_top(:)-newgrid_bot(:)
+  enddo
+
+!print *, 'Just after dz_mod, dz_mod(1,1,:)=',dz_mod(1,1,:)
+!print *, 'Just after dz_mod, dz_out(1,1,:)=',dz_out(1,1,:)
+
+! Interpolating dz_mod (model layer thickness) to output vertical grid,
+! gives an "average" dz_mod corresponding to each output layer needed for the weighting
+   do i=1,Npoints
+     call interp_linear(1, Nlevels, zfull(i,:), dz_mod(i,1,:), Nglevels, newgrid_mid, &
+                        dz_mod_out(i,1,:), .false.)
+   enddo
+
+!print *, 'Just after interp dz_mod_out, dz_mod_out(1,1,:)=',dz_mod_out(1,1,:)
+
+! Legacy vertical regridding method
+   call cosp_change_vertical_grid(Npoints,Ncolumns,Nlevels,zfull,zhalf,&
+            y,Nglevels,newgrid_bot,newgrid_top,r_leg,lunits)
+! Linear interpolation method
+   call cosp_interp_new_grid(Npoints,Ncolumns,Nlevels,zfull,zhalf,&
+            y,Nglevels,newgrid_mid,newgrid_top,r_lin,lunits)
+
+! Computing a vertical regrid method weight as a function of
+! model vs output grid layer thicknesses
+! method_weight --> 1 (dz_mod_out << dz_out), or method_weight --> 0 (dz_mod_out >> dz_out)
+    method_weight(:,:) = dz_out(:,1,:)/(dz_mod_out(:,1,:)+dz_out(:,1,:))
+
+!print *, 'Just after method weight, method_weight(1,:)=', method_weight(1,:)
+
+! Mixing/weighting both regridding methods
+  do i=1,Npoints
+    do j=1,Ncolumns
+      do k=1,Nglevels
+        if (r_leg(i,j,k) .eq. R_GROUND) then
+          r(i,j,k) = R_GROUND
+        else if ( (r_leg(i,j,k) .eq. R_UNDEF) .and. (r_lin(i,j,k) .ne. R_UNDEF) ) then
+          r(i,j,k) = r_lin(i,j,k)
+        else if ( (r_leg(i,j,k) .ne. R_UNDEF) .and. (r_lin(i,j,k) .eq. R_UNDEF) ) then
+          r(i,j,k) = r_leg(i,j,k)
+        else
+          if (lunits) then
+            if ( (r_leg(i,j,k) .ne. R_UNDEF) .and. (r_lin(i,j,k) .ne. R_UNDEF) ) then
+              r(i,j,k) = ( 10._wp**(r_leg(i,j,k)/10._wp) )*method_weight(i,k) + &
+                         ( 10._wp**(r_lin(i,j,k)/10._wp) )*(1-method_weight(i,k))
+            else
+              r(i,j,k) = 0._wp
+            endif
+            if ( r(i,j,k) <= 0.0 ) then
+              r(i,j,k) = R_UNDEF
+            else
+              r(i,j,k) = 10._wp*log10( r(i,j,k) )
+            endif
+          else
+            r(i,j,k) = r_leg(i,j,k)*method_weight(i,k) + &
+                       r_lin(i,j,k)*(1-method_weight(i,k))
+          endif
+        endif
+      enddo
+    enddo
+  enddo
+
+  END SUBROUTINE COSP_MIXING_REGRID_METHODS
+
+
+  !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  !---------- SUBROUTINE COSP_FIND_GRID_INDEXES -------------
+  !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  SUBROUTINE COSP_FIND_GRID_INDEXES(Npoints, Nlevels, zhalf, dz, index_new)
+   implicit none
+   ! Input arguments
+   integer,intent(in) :: Npoints  !# of grid points
+   integer,intent(in) :: Nlevels  !# of levels
+   real(wp),dimension(Npoints,Nlevels),intent(in) :: zhalf ! Height at half model levels [m] (Bottom of model layer)
+   real(wp),intent(in) :: dz ! Output vertical grid thickness 
+   integer,dimension(Npoints),intent(out) :: index_new ! Index (from ground) where to
+                                    ! start upward vertical interpolation in new grid
+
+    ! Local Variables
+    integer :: i,k
+    integer,dimension(Npoints) :: index_old ! Index (from ground) where to start upward
+                                            ! vertical interpolation in old grid
+
+    ! Initialization
+    index_old = 0
+
+    ! Determine the altitude index in old grid where to start interpolation
+    do i=1,Npoints
+       do k=1,Nlevels
+          if ( ((zhalf(i,k+1)-zhalf(i,k)) .gt. dz ) .and. (index_old(i) .eq. 0) ) then
+            index_old(i) = k
+            ! Determine the altitude index in new grid where to start interpolation
+            index_new(i) = floor(zhalf(i,index_old(i))/dz)
+	  endif
+       enddo
+    enddo
+
+  END SUBROUTINE COSP_FIND_GRID_INDEXES
+
+
+  !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  !---------- SUBROUTINE COSP_INTERP_NEW_GRID -------------
+  !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  SUBROUTINE COSP_INTERP_NEW_GRID(Npoints, Ncolumns, Nlevels, zfull, zhalf, &
+             y, Nglevels, newgrid, newgrid_top, r, log_units)
+   implicit none
+   ! Input arguments
+   integer,intent(in) :: Npoints  !# of grid points
+   integer,intent(in) :: Nlevels  !# of levels
+   integer,intent(in) :: Ncolumns !# of columns
+   real(wp),dimension(Npoints,Nlevels),intent(in) :: zfull ! Height at model levels [m]
+   real(wp),dimension(Npoints,Nlevels),intent(in) :: zhalf ! Height at half model levels [m] (Bottom of model layer)
+   real(wp),dimension(Npoints,Ncolumns,Nlevels),intent(in) :: y     ! Variable to be changed to a different grid
+   integer,intent(in) :: Nglevels  !# levels in the new grid
+   real(wp),dimension(Nglevels),intent(in) :: newgrid     ! Height at new vertical levels  [m]
+   real(wp),dimension(Nglevels),intent(in) :: newgrid_top ! Upper boundary of new levels  [m]
+   logical,optional,intent(in) :: log_units ! log units, need to convert to linear units
+   ! Output
+   real(wp),dimension(Npoints,Ncolumns,Nglevels),intent(out) :: r ! Variable on new grid
+
+   ! Local variables
+   integer :: i,j,k
+   logical :: lunits
+   integer :: l
+
+   lunits=.false.
+   if (present(log_units)) lunits=log_units
+
+   r = 0._wp
+
+   ! Simultaneous interpolation of the Ncolumns, loop over all Npoints of the model
+   do i=1,Npoints
+     call interp_linear(Ncolumns, Nlevels, zfull(i,:), y(i,:,:), Nglevels, newgrid, &
+                        r(i,:,:), lunits)
+   enddo
+
+   ! Set points under surface to R_UNDEF, and change to dBZ if necessary
+   do k=1,Nglevels
+     do j=1,Ncolumns
+       do i=1,Npoints
+         if (newgrid_top(k) > zhalf(i,1)) then ! Level above model bottom level
+           if (lunits) then
+             if (r(i,j,k) <= 0.0) then
+               r(i,j,k) = R_UNDEF
+             else
+               r(i,j,k) = 10._wp*log10(r(i,j,k))
+             endif
+           endif
+         else ! Level below surface
+           r(i,j,k) = R_GROUND
+         endif
+       enddo
+     enddo
+   enddo
+
+  END SUBROUTINE COSP_INTERP_NEW_GRID
+
 
   !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   !---------- SUBROUTINE COSP_CHANGE_VERTICAL_GRID ----------------
@@ -246,7 +452,8 @@ END SUBROUTINE COSP_CHANGE_VERTICAL_GRID
     where(radar_tcc2 /= R_UNDEF) radar_tcc2 = radar_tcc2*100._wp
     
   END SUBROUTINE COSP_LIDAR_ONLY_CLOUD
-  
+
+
   ! ######################################################################################
   ! FUNCTION hist1D
   ! ######################################################################################

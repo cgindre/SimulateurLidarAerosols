@@ -44,7 +44,7 @@ LDFLAGS += -L. -lcosp -lsubcol
 # The COSP library
 #
 COSP_OBJS = cosp.o cosp_config.o cosp_stats.o cosp_constants.o cosp_errorHandling.o cosp_kinds.o \
-            cosp_isccp_interface.o icarus.o cosp_misr_interface.o MISR_simulator.o               \
+            cosp_isccp_interface.o icarus.o cosp_misr_interface.o MISR_simulator.o cosp_interp.o \
             cosp_modis_interface.o  modis_simulator.o cosp_parasol_interface.o  parasol.o        \
             cosp_calipso_interface.o  lidar_simulator.o cosp_cloudsat_interface.o quickbeam.o    \
             cosp_rttov_interfaceSTUB.o cosp_rttovSTUB.o cosp_grLidar532_interface.o              \
@@ -76,11 +76,11 @@ cosp.o : cosp_kinds.o cosp_modis_interface.o cosp_constants.o  cosp_rttov_interf
 	cosp_cloudsat_interface.o  cosp_stats.o cosp_parasol_interface.o cosp_rttovSTUB.o \
         cosp_rttov_interfaceSTUB.o quickbeam.o MISR_simulator.o lidar_simulator.o         \
         parasol.o icarus.o cosp_grLidar532_interface.o cosp_atlid_interface.o             \
-        cosp_calipso_aerosols_interface.o lidar_aerosols_simulator.o
+        cosp_calipso_aerosols_interface.o lidar_aerosols_simulator.o cosp_interp.o
 cosp_constants.o            : cosp_kinds.o
 cosp_config.o               : cosp_kinds.o
 cosp_errorHandling.o        : cosp_kinds.o
-cosp_stats.o                : cosp_kinds.o cosp_config.o
+cosp_stats.o                : cosp_kinds.o cosp_config.o cosp_interp.o
 cosp_isccp_interface.o      : cosp_kinds.o icarus.o
 icarus.o	            : cosp_kinds.o cosp_constants.o  cosp_stats.o
 cosp_misr_interface.o       : cosp_kinds.o

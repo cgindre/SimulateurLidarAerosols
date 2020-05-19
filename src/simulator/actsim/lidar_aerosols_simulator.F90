@@ -70,13 +70,18 @@
 !
 ! August 2019 : R. Guzman adapted the code for COSPv2
 !
+! May 2020 : R. Guzman introduced linear interpolation routine COSP_INTERP_NEW_GRID
+!            to get rid of the striping features appearing when model vertical
+!            resolution is significantly coarser than the output grid vertical
+!            resolution (issue #34 GitHub).
+!
 ! %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 module mod_lidar_aerosols_simulator
   USE COSP_KINDS,         ONLY: wp
   USE MOD_COSP_CONFIG,    ONLY: R_UNDEF, atbmin, c0, det1, &
                                 use_vgrid_aerosols, vgrid_zl_aerosols, &
                                 vgrid_zu_aerosols, vgrid_z_aerosols, LIDAR_AEROSOLS_FLAGS
-  USE MOD_COSP_STATS,     ONLY: COSP_CHANGE_VERTICAL_GRID, hist1d
+  USE MOD_COSP_STATS,     ONLY: COSP_INTERP_NEW_GRID, hist1d
   USE MOD_LIDAR_SIMULATOR,ONLY: cmp_backsignal
   implicit none
 
@@ -162,33 +167,35 @@ contains
     ! #################################################################################
     call cmp_backsignal(nlevels,npoints,betatot(1:npoints,zi:zf:zinc),&
             tautot(1:npoints,zi:zf:zinc),pnorm(1:npoints,zi:zf:zinc))
-       
 
     ! Vertically regrid input data
-    if (use_vgrid_aerosols) then 
+    if (use_vgrid_aerosols) then
+       !!! All the vertical regridding here can be performed with the linear interpolation
+       !!! routine COSP_INTERP_NEW_GRID because the output grid for these aerosols diagnotics
+       !!! should always be as fine or finer than the model vertical grid.
        ph_in(:,1,:) = pplay(:,nlevels:1:-1)
-       call cosp_change_vertical_grid(Npoints,1,Nlevels,zlev(:,nlevels:1:-1),zlev_half(:,nlevels:1:-1),&
-            ph_in,llm_aerosols,vgrid_zl_aerosols(llm_aerosols:1:-1),vgrid_zu_aerosols(llm_aerosols:1:-1),pplayFlip(:,1,llm_aerosols:1:-1))
+       call cosp_interp_new_grid(Npoints,1,Nlevels,zlev(:,nlevels:1:-1),zlev_half(:,nlevels:1:-1),&
+            ph_in,llm_aerosols,vgrid_z_aerosols(llm_aerosols:1:-1),vgrid_zu_aerosols(llm_aerosols:1:-1),pplayFlip(:,1,llm_aerosols:1:-1))
 
        beta_mol_in(:,1,:) = beta_mol(:,nlevels:1:-1)
-       call cosp_change_vertical_grid(Npoints,1,Nlevels,zlev(:,nlevels:1:-1),zlev_half(:,nlevels:1:-1),&
-            beta_mol_in,llm_aerosols,vgrid_zl_aerosols(llm_aerosols:1:-1),vgrid_zu_aerosols(llm_aerosols:1:-1),beta_molFlip(:,1,llm_aerosols:1:-1))
+       call cosp_interp_new_grid(Npoints,1,Nlevels,zlev(:,nlevels:1:-1),zlev_half(:,nlevels:1:-1),&
+            beta_mol_in,llm_aerosols,vgrid_z_aerosols(llm_aerosols:1:-1),vgrid_zu_aerosols(llm_aerosols:1:-1),beta_molFlip(:,1,llm_aerosols:1:-1))
 
        pmol_in(:,1,:) = pmol(:,nlevels:1:-1)
-       call cosp_change_vertical_grid(Npoints,1,Nlevels,zlev(:,nlevels:1:-1),zlev_half(:,nlevels:1:-1),&
-            pmol_in,llm_aerosols,vgrid_zl_aerosols(llm_aerosols:1:-1),vgrid_zu_aerosols(llm_aerosols:1:-1),pmolFlip(:,1,llm_aerosols:1:-1))
+       call cosp_interp_new_grid(Npoints,1,Nlevels,zlev(:,nlevels:1:-1),zlev_half(:,nlevels:1:-1),&
+            pmol_in,llm_aerosols,vgrid_z_aerosols(llm_aerosols:1:-1),vgrid_zu_aerosols(llm_aerosols:1:-1),pmolFlip(:,1,llm_aerosols:1:-1))
 
        pnorm_in(:,1,:) = pnorm(:,nlevels:1:-1)
-       call cosp_change_vertical_grid(Npoints,1,Nlevels,zlev(:,nlevels:1:-1),zlev_half(:,nlevels:1:-1),&
-            pnorm_in,llm_aerosols,vgrid_zl_aerosols(llm_aerosols:1:-1),vgrid_zu_aerosols(llm_aerosols:1:-1),pnormFlip(:,1,llm_aerosols:1:-1))
+       call cosp_interp_new_grid(Npoints,1,Nlevels,zlev(:,nlevels:1:-1),zlev_half(:,nlevels:1:-1),&
+            pnorm_in,llm_aerosols,vgrid_z_aerosols(llm_aerosols:1:-1),vgrid_zu_aerosols(llm_aerosols:1:-1),pnormFlip(:,1,llm_aerosols:1:-1))
 
        zlev_in(:,1,:) = zlev(:,nlevels:1:-1)
-       call cosp_change_vertical_grid(Npoints,1,Nlevels,zlev(:,nlevels:1:-1),zlev_half(:,nlevels:1:-1),&
-            zlev_in,llm_aerosols,vgrid_zl_aerosols(llm_aerosols:1:-1),vgrid_zu_aerosols(llm_aerosols:1:-1),zlevFlip(:,1,llm_aerosols:1:-1))
+       call cosp_interp_new_grid(Npoints,1,Nlevels,zlev(:,nlevels:1:-1),zlev_half(:,nlevels:1:-1),&
+            zlev_in,llm_aerosols,vgrid_z_aerosols(llm_aerosols:1:-1),vgrid_zu_aerosols(llm_aerosols:1:-1),zlevFlip(:,1,llm_aerosols:1:-1))
 
        alpha_in(:,1,:) = alpha_aer(:,nlevels:1:-1)
-       call cosp_change_vertical_grid(Npoints,1,Nlevels,zlev(:,nlevels:1:-1),zlev_half(:,nlevels:1:-1),&
-            alpha_in,llm_aerosols,vgrid_zl_aerosols(llm_aerosols:1:-1),vgrid_zu_aerosols(llm_aerosols:1:-1),alphaFlip(:,1,llm_aerosols:1:-1))
+       call cosp_interp_new_grid(Npoints,1,Nlevels,zlev(:,nlevels:1:-1),zlev_half(:,nlevels:1:-1),&
+            alpha_in,llm_aerosols,vgrid_z_aerosols(llm_aerosols:1:-1),vgrid_zu_aerosols(llm_aerosols:1:-1),alphaFlip(:,1,llm_aerosols:1:-1))
 
     endif
 
