@@ -348,10 +348,8 @@ program cosp2_test
                beta_dst(Npoints,Nlevels),beta_smo(Npoints,Nlevels),                      & 
                beta_ncl(Npoints,Nlevels))
   endif
-!!!print*,'Before reading sample data input file  '
-
   fileIN = trim(dinput)//trim(finput)
-  call nc_read_input_file(fileIN,Npoints,Nlevels,N_HYDRO,lon,lat,p,ph,zlev,zlev_half,    &
+    call nc_read_input_file(fileIN,Npoints,Nlevels,N_HYDRO,lon,lat,p,ph,zlev,zlev_half,  &
                           T,sh,rh,tca,cca,mr_lsliq,mr_lsice,mr_ccliq,mr_ccice,fl_lsrain, &
                           fl_lssnow,fl_lsgrpl,fl_ccrain,fl_ccsnow,Reff,dtau_s,dtau_c,    &
                           dem_s,dem_c,skt,landmask,mr_ozone,u_wind,v_wind,sunlit,        &
@@ -359,7 +357,6 @@ program cosp2_test
                           ! Below, optional fields only used for lidar aerosols simulator
                           surftype,alpha_aer,beta_aer,beta_dst,beta_smo,beta_ncl)
   call cpu_time(driver_time(2))
-!!!print*,'After reading sample data input file  '
 
   !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   ! Which simulators need to be run? Look at which outputs are requested.
@@ -383,6 +380,19 @@ program cosp2_test
     ! If no CALIPSO observations file is read in, then use the standard cloud fraction
     ! diagnostic from the CALIPSO simulator to perform the cloud masking
     if (.not. use_obs_for_aerosols) Lclcalipso = .true.
+  else
+    LcalipsoaerosolsSR0 = .false.
+    LcalipsoaerosolsSR1 = .false.
+    LcalipsoaerosolsSR2 = .false.
+    LcalipsoaerosolsSR3 = .false.
+    LcalipsoaerosolsATB0 = .false.
+    LcalipsoaerosolsATB1 = .false.
+    LcalipsoaerosolsATB2 = .false.
+    LcalipsoaerosolsATB3 = .false.
+    LcalipsoaerosolsEXT0 = .false.
+    LcalipsoaerosolsEXT1 = .false.
+    LcalipsoaerosolsEXT2 = .false.
+    LcalipsoaerosolsEXT3 = .false.
   endif
 
   if (Lclcalipso2 .or. Lclcalipso .or.  Lclhcalipso .or. Lcllcalipso .or. Lclmcalipso    &

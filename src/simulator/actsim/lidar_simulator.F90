@@ -76,13 +76,16 @@
 ! the altitude at which a spaceborne lidar beam is fully attenuated. AMT, 10, 4659-4685,
 ! https://doi.org/10.5194/amt-10-4659-2017
 !
+! May 2020 - R.Guzman - Introduced new regridding routine
+!
 ! %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 module mod_lidar_simulator
   USE COSP_KINDS,         ONLY: wp
   USE MOD_COSP_CONFIG,    ONLY: SR_BINS,S_CLD,S_ATT,S_CLD_ATT,R_UNDEF,calipso_histBsct,  &
-                                use_vgrid,vgrid_zl,vgrid_zu,vgrid_z,atlid_histBsct,      &
+                                use_vgrid,vgrid_zl,vgrid_zu,vgrid_z,atlid_histBsct,   &
                                 grLidar532_histBsct,S_CLD_ATLID,S_ATT_ATLID,S_CLD_ATT_ATLID
-  USE MOD_COSP_STATS,     ONLY: COSP_CHANGE_VERTICAL_GRID,hist1d
+  USE MOD_COSP_STATS,     ONLY: COSP_CHANGE_VERTICAL_GRID, hist1d, COSP_INTERP_NEW_GRID, &
+                                COSP_FIND_GRID_INDEXES,COSP_MIXING_REGRID_METHODS
   implicit none
   
   ! Polynomial coefficients (Alpha, Beta, Gamma) which allow to compute the 
@@ -363,20 +366,33 @@ contains
         
     ! Vertically regrid input data
     if (use_vgrid) then 
+       !!! Regridding fields with low vertical variability (i.e. Pressure) can be performed with
+       !!! a simple linear interpolation. Fields with high vertical variability, particularly
+       !!! in the lower layers of the atmosphere (i.e. ATB = pnorm), have to be regridded with
+       !!! the new COSP_MIXING_REGRID_METHODS routine which mixes both the legacy and the
+       !!! linear interpolation vertical regridding methods in order to avoid striping
+       !!! features to appear in the mid-high levels of the atmosphere.
+
        ph_in(:,1,:) = pplay(:,nlevels:1:-1)
-       call cosp_change_vertical_grid(Npoints,1,Nlevels,zlev(:,nlevels:1:-1),zlev_half(:,nlevels:1:-1),&
-            ph_in,llm,vgrid_zl(llm:1:-1),vgrid_zu(llm:1:-1),pplayFlip(:,1,llm:1:-1))
+       call cosp_interp_new_grid(Npoints,1,Nlevels,zlev(:,nlevels:1:-1),zlev_half(:,nlevels:1:-1),&
+            ph_in,llm,vgrid_z(llm:1:-1),vgrid_zu(llm:1:-1),pplayFlip(:,1,llm:1:-1))
        betamol_in(:,1,:) = pmol(:,nlevels:1:-1)
-       call cosp_change_vertical_grid(Npoints,1,Nlevels,zlev(:,nlevels:1:-1),zlev_half(:,nlevels:1:-1),&
-            betamol_in,llm,vgrid_zl(llm:1:-1),vgrid_zu(llm:1:-1),betamolFlip(:,1,llm:1:-1))
-       call cosp_change_vertical_grid(Npoints,Ncol,Nlevels,zlev(:,nlevels:1:-1),zlev_half(:,nlevels:1:-1),&
-            pnorm(:,:,nlevels:1:-1),llm,vgrid_zl(llm:1:-1),vgrid_zu(llm:1:-1),pnormFlip(:,:,llm:1:-1))
+       call cosp_interp_new_grid(Npoints,1,Nlevels,zlev(:,nlevels:1:-1),zlev_half(:,nlevels:1:-1),&
+            betamol_in,llm,vgrid_z(llm:1:-1),vgrid_zu(llm:1:-1),betamolFlip(:,1,llm:1:-1))
+
+       call cosp_mixing_regrid_methods(Npoints,Ncol,Nlevels,zlev(:,nlevels:1:-1), &
+            zlev_half(:,nlevels:1:-1), pnorm(:,:,nlevels:1:-1),llm,vgrid_z(llm:1:-1), &
+            vgrid_zl(llm:1:-1),vgrid_zu(llm:1:-1), pnormFlip(:,:,llm:1:-1))
+
        if (lcalipso) then
           t_in(:,1,:)=tmp(:,nlevels:1:-1)
-          call cosp_change_vertical_grid(Npoints,1,Nlevels,zlev(:,nlevels:1:-1),zlev_half(:,nlevels:1:-1),&
-               t_in,llm,vgrid_zl(llm:1:-1),vgrid_zu(llm:1:-1),tmpFlip(:,1,llm:1:-1))
-          call cosp_change_vertical_grid(Npoints,Ncol,Nlevels,zlev(:,nlevels:1:-1),zlev_half(:,nlevels:1:-1),&
-               pnorm_perp(:,:,nlevels:1:-1),llm,vgrid_zl(llm:1:-1),vgrid_zu(llm:1:-1),pnorm_perpFlip(:,:,llm:1:-1))
+          call cosp_mixing_regrid_methods(Npoints,1,Nlevels,zlev(:,nlevels:1:-1), &
+               zlev_half(:,nlevels:1:-1),t_in,llm,vgrid_z(llm:1:-1), &
+               vgrid_zl(llm:1:-1),vgrid_zu(llm:1:-1),tmpFlip(:,1,llm:1:-1))
+
+       call cosp_mixing_regrid_methods(Npoints,Ncol,Nlevels,zlev(:,nlevels:1:-1), &
+            zlev_half(:,nlevels:1:-1), pnorm_perp(:,:,nlevels:1:-1),llm,vgrid_z(llm:1:-1), &
+            vgrid_zl(llm:1:-1),vgrid_zu(llm:1:-1), pnorm_perpFlip(:,:,llm:1:-1))
        endif
     endif
 

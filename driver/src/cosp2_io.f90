@@ -2019,7 +2019,7 @@ contains
     real(wp),intent(out) :: emsfc_lw
     integer,intent(out) :: mode,Nlon,Nlat
     ! Optional arguments for lidar aerosols simulator
-    real(wp),dimension(Npnts),target,intent(out),optional :: surftype
+    real(wp),dimension(Npnts),intent(out),optional :: surftype
     real(wp),dimension(Npnts,Nl),target,intent(out),optional :: alpha_aer,beta_aer, &
                                                          beta_dst, beta_smo, beta_ncl
     
@@ -2035,7 +2035,14 @@ contains
     character(len=256) :: dimname(NMAX_DIM) ! 256 hardcoded, instead of MAXNCNAM. This works for NetCDF 3 and 4.
     character(len=64) :: routine_name='NC_READ_INPUT_FILE'
     character(len=128) :: errmsg,straux
+    ! Lidar aerosols
+    logical :: llidaraerosols
     
+    ! Reading lidar aerosols inputs?
+    llidaraerosols =.false.
+    if (present(surftype) .and. present(alpha_aer) .and. present(beta_aer) .and. &
+         present(beta_dst) .and. present(beta_smo) .and. present(beta_ncl)) llidaraerosols =.true.
+
     mode = 0
     Nlon = 0
     Nlat = 0
@@ -2366,7 +2373,10 @@ contains
           else
              call map_ll_to_point(Na,Nb,Npoints,x2=x2,y1=sunlit)
           endif
-       ! Optional fields for lidar aerosols simulator
+       end select
+    ! Optional fields for lidar aerosols simulator
+    if (llidaraerosols) then
+       select case (trim(vname))
        case ('surftype')
           if (Lpoint) then
              surftype(1:Npoints) = x1(1:Npoints)
@@ -2404,6 +2414,8 @@ contains
              call map_ll_to_point(Na,Nb,Npoints,x3=x3,y2=beta_ncl)
           endif
        end select
+    endif
+    ! End reading optional fields for lidar aerosols simulator
        ! Free memory
        if (vrank == 1) deallocate(x1)
        if (vrank == 2) deallocate(x2)
