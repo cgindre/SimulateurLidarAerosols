@@ -136,7 +136,7 @@ contains
                                                   pmolFlip, pnormFlip, zlevFlip, &
                                                   alphaFlip 
     real(wp),dimension(npoints,llm_aerosols)   :: pmolm, sr, pnorm_c, cld_aerosols
-
+    real(wp) :: cloud_fraction_threshold = 99.
 
     ! COSPv2 convention for spaceborne lidar (default)
        zi   = 1
@@ -272,7 +272,7 @@ contains
    DO i = 1,npoints
       DO k=1,llm_aerosols
 
-         if ( cld_aerosols(i,k) .lt. 100. .and. cld_aerosols(i,k) .ge. 0.) then 
+         if ( cld_aerosols(i,k) .lt. cloud_fraction_threshold .and. cld_aerosols(i,k) .ge. 0.) then 
 !               aerotype1(i,k)   = aertype(i,k)
                ext_aero(i,k,2)   = ext_aero(i,k,1)
                pnorm_aero(i,k,2) = pnorm_aero(i,k,1)
@@ -322,7 +322,7 @@ contains
       DO k=1,llm_aerosols
 
          ! Cloud mask applied to Detection Threshold masked fields
-         if ( cld_aerosols(i,k) .lt. 100. .and. cld_aerosols(i,k) .ge. 0.) then 
+         if ( cld_aerosols(i,k) .lt. cloud_fraction_threshold .and. cld_aerosols(i,k) .ge. 0.) then 
                ext_aero(i,k,4)   = ext_aero(i,k,3)
                pnorm_aero(i,k,4) = pnorm_aero(i,k,3)
                sr_aero(i,k,4)    = sr_aero(i,k,3)
